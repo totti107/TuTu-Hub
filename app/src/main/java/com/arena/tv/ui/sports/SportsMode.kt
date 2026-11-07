@@ -191,6 +191,7 @@ fun SportsMode(hub: SportsHubViewModel, mc: MatchCentreViewModel, header: @Compo
                             Text("${state.sport?.label ?: "All sports"} ▾", fontSize = 17.sp, fontWeight = FontWeight.Medium)
                         }
                         DropChip(state.day.label, DayOffset.entries.map { it to it.label }, state.day, hub::setDay)
+                        SportsGuideButton()
                         IconAction(Icons.Rounded.Refresh, "Refresh", onClick = hub::manualRefresh)
                     }
                     if (searching) OutlinedTextField(state.query, hub::setQuery, Modifier.fillMaxWidth(), placeholder = { Text("Team, player or event") },

@@ -61,10 +61,11 @@ data class Playlist(
     val apiUrl: String get() = "$base/player_api.php?username=${user.enc()}&password=${pass.enc()}"
     val effectiveEpgUrls: List<String>
         get() {
+            // Extra guide links are added to the provider's own guide (MAC portals use them instead of the portal's).
             val manual = epgUrl.split(',', '\n', ' ').map { it.trim() }.filter { it.startsWith("http") }
-            if (manual.isNotEmpty()) return manual
-            if (type == SourceType.XTREAM && server.isNotBlank()) return listOf("$base/xmltv.php?username=${user.enc()}&password=${pass.enc()}")
-            return advertisedEpg.split(',', '\n').map { it.trim() }.filter { it.startsWith("http") }
+            val provider = if (type == SourceType.XTREAM && server.isNotBlank()) listOf("$base/xmltv.php?username=${user.enc()}&password=${pass.enc()}")
+                else advertisedEpg.split(',', '\n').map { it.trim() }.filter { it.startsWith("http") }
+            return (provider + manual).distinct()
         }
 }
 
@@ -90,6 +91,30 @@ data class Prefs(
     val liveView: String = "library",
     /** system, 12 or 24 */
     val clock: String = "system",
+    // ---- Scores while watching (Settings → Sports) ----
+    /** Games you pinned from a match page. */
+    val scorePinned: Boolean = true,
+    /** Live games of the teams you follow. */
+    val scoreTeams: Boolean = true,
+    /** The live game on the channel you're watching. */
+    val scoreThisChannel: Boolean = false,
+    /** rows (one line per game) or compact (one at a time). */
+    val scoreStyle: String = "rows",
+    /** Pinned games as "gameId@startMillis" (old ones are dropped automatically). */
+    val pinnedGames: List<String> = emptyList(),
+    // ---- Your teams ----
+    /** A reminder 10 minutes before your teams play. */
+    val remindTeams: Boolean = true,
+    /** The final score when your team's game ends. */
+    val finalScores: Boolean = true,
+    // ---- Title Optimizer ----
+    val titleOptimizer: Boolean = false,
+    /** Words to remove (null = the default list). */
+    val titleWords: List<String>? = null,
+    /** Also remove country prefixes like "UK:", "|AR|", "[EN]". */
+    val titleCountry: Boolean = false,
+    /** Also remove emojis and symbols. */
+    val titleEmoji: Boolean = true,
 )
 
 data class TraktAuth(
@@ -171,9 +196,12 @@ class SettingsStore(private val context: Context) {
     }
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-    val flow: Flow<AppSettings> = context.dataStore.data.map { p -> read(p) }
+    val flow: Flow<AppSettings> = context.dataStore.data.map { p -> read(p).also { flowHasSource = it.hasSource } }
 
     suspend fun current(): AppSettings = flow.first()
+    /** Last known "is there a playlist" (for quick checks in click handlers). */
+    @Volatile var flowHasSource: Boolean = true
+        internal set
 
     private fun read(p: Preferences): AppSettings {
         var lists = p[K.playlists]?.let { runCatching { json.decodeFromString<List<Playlist>>(it) }.getOrNull() } ?: emptyList()

@@ -56,6 +56,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -153,6 +154,8 @@ fun PlayerScreen(activity: PlayerActivity, player: ExoPlayer, state: PlayerUi, z
         }
 
         if (!state.inPip && !state.controls && LocalContext.current.app.prefs.value.clockAlways) CornerClock(Modifier.align(Alignment.TopEnd))
+        if (!state.inPip && !state.controls && state.panel == null && state.scores.isNotEmpty())
+            ScoreOverlay(state.scores, state.goals, LocalContext.current.app.prefs.value.scoreStyle == "compact", Modifier.align(Alignment.TopStart))
         if (!state.inPip) {
             AnimatedVisibility(state.controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
                 Controls(activity, state) { lastTouch = System.currentTimeMillis() }
@@ -389,4 +392,32 @@ fun CornerClock(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) { while (true) { delay(10_000); now = System.currentTimeMillis() } }
     Text(Time.clock(now), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
         modifier = modifier.padding(18.dp).clip(RoundedCornerShape(10.dp)).background(Color(0x88000000)).padding(horizontal = 10.dp, vertical = 4.dp))
+}
+
+/** Live scores in the top-left corner while watching. A goal lights the score up green. */
+@Composable
+fun ScoreOverlay(games: List<Game>, goals: Set<String>, compact: Boolean, modifier: Modifier = Modifier) {
+    var i by remember { mutableIntStateOf(0) }
+    LaunchedEffect(games.size, compact) { i = 0; while (compact && games.size > 1) { delay(7_000); i = (i + 1) % games.size } }
+    val shown = if (compact) listOfNotNull(games.getOrNull(i % maxOf(1, games.size))) else games
+    Column(modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        shown.forEach { g -> ScorePill(g, g.id in goals) }
+    }
+}
+
+@Composable
+private fun ScorePill(g: Game, goal: Boolean) {
+    val bg = if (goal) ArenaColors.Accent else Color(0xD90B0B0D)
+    val fg = if (goal) Color.Black else Color.White
+    Row(Modifier.clip(RoundedCornerShape(12.dp)).background(bg).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (g.headToHead) {
+            com.arena.tv.ui.components.Logo(g.home.logo, g.home.abbreviation, 22.dp, round = true)
+            Text(" ${g.home.abbreviation.ifBlank { g.home.shortName }}", color = fg, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text("  ${g.home.score ?: 0} – ${g.away.score ?: 0}  ", color = fg, fontWeight = FontWeight.Black, fontSize = 16.sp)
+            Text("${g.away.abbreviation.ifBlank { g.away.shortName }} ", color = fg, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            com.arena.tv.ui.components.Logo(g.away.logo, g.away.abbreviation, 22.dp, round = true)
+        } else Text(g.title ?: g.league.shortName, color = fg, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
+        Text(if (goal) "  GOAL" else "  ${if (g.state == com.arena.tv.sports.GameState.POST) "FT" else g.statusText}",
+            color = if (goal) Color.Black else if (g.isLive) ArenaColors.Accent else Color(0xAAFFFFFF), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
 }

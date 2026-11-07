@@ -46,10 +46,23 @@ class SportsRepository(private val api: SportsApi) {
                     (!it.headToHead && it.startMillis < end && it.endMillis >= start) // golf tournaments run for days
             }
         games.forEach { cache[it.id] = it }
+        runCatching { onGames?.invoke(games) }
         return games to (failures / maxOf(1, espnDatesCovering(start, end).size))
     }
 
     suspend fun details(game: Game) = api.details(game)
+
+    /** One game by its league and id (used by reminders, when nothing is cached). */
+    suspend fun fetchGame(leagueKey: String, id: String, startMillis: Long): Game? {
+        val league = Leagues.byKey(leagueKey) ?: return null
+        val f = SimpleDateFormat("yyyyMMdd", Locale.US).apply { timeZone = TimeZone.getTimeZone("America/New_York") }
+        val g = api.scoreboard(league, f.format(startMillis)).firstOrNull { it.id == id }
+        g?.let { cache[it.id] = it }
+        return g
+    }
+
+    /** Called with every fresh scoreboard (reminders are scheduled from it). */
+    @Volatile var onGames: ((List<Game>) -> Unit)? = null
 
     /** Re-reads one game's league scoreboard to get its fresh score / clock. */
     suspend fun refreshGame(game: Game): Game? {

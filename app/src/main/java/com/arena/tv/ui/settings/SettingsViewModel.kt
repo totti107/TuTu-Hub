@@ -55,6 +55,23 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     // ---------------- Playback & browsing ----------------
     fun updatePrefs(f: (com.arena.tv.data.Prefs) -> com.arena.tv.data.Prefs) { viewModelScope.launch { c.settings.updatePrefs(f) } }
 
+    // ---------------- Title Optimizer ----------------
+    fun updateTitles(f: (com.arena.tv.data.Prefs) -> com.arena.tv.data.Prefs) = viewModelScope.launch {
+        c.settings.updatePrefs(f)
+        com.arena.tv.data.TitleOptimizer.config = com.arena.tv.data.TitleOptimizer.configOf(c.settings.current().prefs)
+        c.iptv.reapplyTitles()
+    }
+
+    // ---------------- TV guide ----------------
+    val guideChannels = c.db.channels().withGuideCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val guideTotal = c.db.channels().safeCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    suspend fun withoutGuide() = c.db.channels().withoutGuide()
+    fun refreshSportsGuide() = viewModelScope.launch { c.iptv.refreshSportsGuide() }
+    fun saveGuideLinks(id: String, links: String) = viewModelScope.launch {
+        c.settings.updatePlaylist(id) { it.copy(epgUrl = links.trim()) }
+        c.iptv.refreshEpg()
+    }
+
     // ---------------- Backup & restore ----------------
     /** Result of the last backup action, shown under the buttons. */
     val backupMessage = MutableStateFlow<String?>(null)

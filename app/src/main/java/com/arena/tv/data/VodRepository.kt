@@ -137,11 +137,12 @@ class VodRepository(private val http: OkHttpClient, private val db: ArenaDb, pri
 
     private fun toEntity(pid: String, kind: Int, m: Map<String, String>, position: Int): VodEntity? {
         val id = (if (kind == VodKind.MOVIE) m["stream_id"] else m["series_id"]) ?: return null
-        val name = m["name"]?.trim()?.ifEmpty { null } ?: return null
+        val raw = m["name"]?.trim()?.ifEmpty { null } ?: return null
+        val name = TitleOptimizer.apply(raw)
         val rating = m["rating"]?.toDoubleOrNull()?.takeIf { it > 0 } ?: m["rating_5based"]?.toDoubleOrNull()?.takeIf { it > 0 }?.times(2)
         val year = m["year"]?.take(4)?.toIntOrNull()
             ?: (m["releaseDate"] ?: m["releasedate"] ?: m["release_date"])?.take(4)?.toIntOrNull()
-            ?: yearInName.find(name)?.groupValues?.get(1)?.toIntOrNull()
+            ?: yearInName.find(raw)?.groupValues?.get(1)?.toIntOrNull()
         val added = (m["added"] ?: m["last_modified"])?.toLongOrNull()?.times(1000) ?: 0L
         return VodEntity(
             key = "$pid:${prefix(kind)}:$id", playlistId = pid, kind = kind, providerId = id, position = position, name = name,
@@ -163,7 +164,7 @@ class VodRepository(private val http: OkHttpClient, private val db: ArenaDb, pri
         val movieCatIds = movieCats.withIndex().associate { (i, g) -> g to "$pid:$i" }
         val movieEntities = movies.mapIndexed { i, c ->
             val year = yearInName.find(c.name)?.groupValues?.get(1)?.toIntOrNull()
-            VodEntity("$pid:m:${hash(c.url)}", pid, true, VodKind.MOVIE, hash(c.url), i, c.name, c.logo, movieCatIds[c.group]!!, null, year,
+            VodEntity("$pid:m:${hash(c.url)}", pid, true, VodKind.MOVIE, hash(c.url), i, TitleOptimizer.apply(c.name), c.logo, movieCatIds[c.group]!!, null, year,
                 0L, c.url.substringAfterLast('.', "").take(4).ifBlank { null }, c.url, null, null, null, null)
         }
         // Series

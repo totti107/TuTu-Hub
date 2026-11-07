@@ -127,6 +127,7 @@ fun SportsHubScreen(onOpenGame: (Game) -> Unit, onOpenSettings: () -> Unit) {
                 DropChip(state.day.label, DayOffset.entries.map { it to it.label }, state.day, vm::setDay)
                 DropChip(state.country ?: if (compactChrome) "Countries" else "All countries", listOf<Pair<String?, String>>(null to "All countries") + countries.map { it to it },
                     state.country, vm::setCountry)
+                SportsGuideButton()
                 IconAction(Icons.Rounded.Refresh, "Refresh", onClick = vm::manualRefresh)
             },
         )

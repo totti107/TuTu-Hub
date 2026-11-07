@@ -105,7 +105,7 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
                 s is Section.All -> c.db.channels().all()
                 else -> flow { emit(emptyList()) }
             }
-            val filtered = if (!hd) base else base.map { l -> l.filter { ch -> Text.tokens(Text.normalize(ch.name)).any { it in hdWords } } }
+            val filtered = if (!hd) base else base.map { l -> l.filter { ch -> Text.tokens(Text.normalize(ch.rawName.ifEmpty { ch.name })).any { it in hdWords } } }
             // Adult channels only appear once the PIN has been entered.
             combine(filtered, c.parental.unlocked) { l, open -> if (open) l else l.filter { !it.adult } }
         }

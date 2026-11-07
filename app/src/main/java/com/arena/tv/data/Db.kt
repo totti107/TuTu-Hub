@@ -33,6 +33,8 @@ data class ChannelEntity(
     val referrer: String?,
     /** Adult content: locked behind the parental PIN (or hidden). */
     @androidx.room.ColumnInfo(defaultValue = "0") val adult: Boolean = false,
+    /** The name as the provider wrote it (name may be tidied by the Title Optimizer). */
+    @androidx.room.ColumnInfo(defaultValue = "") val rawName: String = "",
 )
 
 @Entity(tableName = "programs", indices = [Index(value = ["epgKey", "start"]), Index("stop")])
@@ -54,6 +56,8 @@ data class ProgramFts(val title: String, val subtitle: String?)
 
 @Entity(tableName = "favorite_channels")
 data class FavoriteChannelEntity(@PrimaryKey val channelId: String, val addedAt: Long)
+
+data class RawName(val id: String, val rawName: String)
 
 @Entity(tableName = "favorite_teams")
 data class FavoriteTeamEntity(@PrimaryKey val key: String, val name: String, val logo: String?)
@@ -101,6 +105,12 @@ interface ChannelDao {
     @Query("SELECT COUNT(*) FROM recent_channels r JOIN channels c ON c.id = r.channelId WHERE c.visible = 1") fun recentCount(): Flow<Int>
     @Query("SELECT COUNT(*) FROM favorite_channels f JOIN channels c ON c.id = f.channelId WHERE c.visible = 1") fun favoriteCount(): Flow<Int>
     @Query("SELECT * FROM channels WHERE id = :id") suspend fun byId(id: String): ChannelEntity?
+    @Query("SELECT COUNT(*) FROM channels WHERE visible = 1 AND adult = 0 AND epgKey IS NOT NULL") fun withGuideCount(): Flow<Int>
+    @Query("SELECT COUNT(*) FROM channels WHERE visible = 1 AND adult = 0") fun safeCount(): Flow<Int>
+    @Query("SELECT * FROM channels WHERE visible = 1 AND adult = 0 AND epgKey IS NULL ORDER BY position LIMIT 300") suspend fun withoutGuide(): List<ChannelEntity>
+    @Query("UPDATE channels SET rawName = name WHERE rawName = ''") fun fillRawNamesBlocking()
+    @Query("SELECT id, rawName FROM channels") fun rawNamesBlocking(): List<RawName>
+    @Query("UPDATE channels SET name = :name WHERE id = :id") fun renameBlocking(id: String, name: String)
     @Query("SELECT * FROM channels WHERE id IN (:ids)") suspend fun byIds(ids: List<String>): List<ChannelEntity>
     @Query("SELECT id, name, groupTitle, epgKey FROM channels WHERE visible = 1") suspend fun allLite(): List<ChannelLite>
     @Query("SELECT id, name, groupTitle, epgKey FROM channels WHERE visible = 1 AND adult = 0 AND epgKey IN (:keys)") suspend fun liteByEpgKeys(keys: List<String>): List<ChannelLite>
@@ -169,7 +179,7 @@ interface UserDao {
     entities = [ChannelEntity::class, ProgramEntity::class, FavoriteChannelEntity::class, FavoriteTeamEntity::class,
         RecentChannelEntity::class, FeedbackEntity::class, ProgramFts::class, VodEntity::class, VodCategoryEntity::class, EpisodeEntity::class,
         ProgressEntity::class, VodFavoriteEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class ArenaDb : RoomDatabase() {
@@ -232,9 +242,15 @@ abstract class ArenaDb : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `channels` ADD COLUMN `rawName` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun create(context: Context): ArenaDb =
             Room.databaseBuilder(context, ArenaDb::class.java, "arena.db")
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build()
     }

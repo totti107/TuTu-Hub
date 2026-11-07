@@ -116,6 +116,18 @@ class GameDetailViewModel(private val c: AppContainer, private val gameId: Strin
     suspend fun searchChannels(q: String): List<ChannelEntity> =
         if (q.isBlank()) c.db.channels().favoritesOnce() else c.db.channels().searchOnce(q.trim())
 
+    /** Pinned games show their score in the corner while you watch any channel. */
+    val pinned = c.settings.flow.map { s -> s.prefs.pinnedGames.any { it.substringBefore('@') == gameId } }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, false)
+    fun togglePin() = viewModelScope.launch {
+        val g = _game.value ?: return@launch
+        val dayAgo = System.currentTimeMillis() - 24 * 3600_000L
+        c.settings.updatePrefs { p ->
+            val kept = p.pinnedGames.filter { (it.substringAfter('@').toLongOrNull() ?: 0) > dayAgo && it.substringBefore('@') != g.id }
+            p.copy(pinnedGames = if (pinned.value) kept else kept + "${g.id}@${g.startMillis}")
+        }
+    }
+
     fun toggleTeam(t: Team, isFav: Boolean) = viewModelScope.launch {
         val g = _game.value ?: return@launch
         val key = t.key(g.league.sport)

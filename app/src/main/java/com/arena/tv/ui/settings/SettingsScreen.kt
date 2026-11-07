@@ -117,6 +117,9 @@ fun SettingsScreen() {
     val wide = LocalWide.current
     val followed = settings.followedSports.ifEmpty { Sport.entries.map { it.espn }.toSet() }
 
+    // Android 13+ asks before an app can show notifications (team reminders, final scores).
+    val notifPermission = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
+    val askNotifications: () -> Unit = { if (android.os.Build.VERSION.SDK_INT >= 33) runCatching { notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS) } }
     var page by rememberSaveable { mutableStateOf<SettingsPage?>(if (wide) SettingsPage.PLAYLISTS else null) }
     if (wide && page == null) page = SettingsPage.PLAYLISTS
     androidx.activity.compose.BackHandler(enabled = !wide && page != null) { page = null }
@@ -198,6 +201,8 @@ fun SettingsScreen() {
 
             }
             if (pg == SettingsPage.SPORTS) {
+            item { SectionHeader("Sports") }
+            sportsWatchItems(settings.prefs, vm::updatePrefs, askNotifications)
             // ---------------- Sports & teams ----------------
             item { SectionHeader("My sports & teams") }
             item {
@@ -272,6 +277,8 @@ fun SettingsScreen() {
             }
             if (pg == SettingsPage.PLAYBACK) { item { SectionHeader("Playback") }; playbackItems(settings.prefs, vm::updatePrefs) }
             if (pg == SettingsPage.BROWSING) { item { SectionHeader("Browsing") }; browsingItems(settings.prefs, vm::updatePrefs) }
+            if (pg == SettingsPage.TITLES) { item { SectionHeader("Title Optimizer") }; titleItems(settings.prefs) { f -> vm.updateTitles(f) } }
+            if (pg == SettingsPage.GUIDE) { item { SectionHeader("TV guide") }; guideItems(vm, settings.playlists, refresh.running) }
             if (pg == SettingsPage.BACKUP) { item { SectionHeader("Backup & restore") }; backupItems(vm) }
         }
         }

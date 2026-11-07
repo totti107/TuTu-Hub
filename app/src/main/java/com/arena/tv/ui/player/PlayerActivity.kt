@@ -64,6 +64,10 @@ data class PlayerUi(
     /** Open side panel: channels, epg, recent, scores, audio, subs, quality, sleep. */
     val panel: String? = null,
     val sleepAt: Long? = null,
+    /** Scores shown in the corner (Settings → Sports → Scores while watching). */
+    val scores: List<com.arena.tv.sports.Game> = emptyList(),
+    /** Games whose score just changed (highlighted for a few seconds). */
+    val goals: Set<String> = emptySet(),
 )
 
 /** One choice in the audio / subtitle / quality panels. groupIndex -1 = Auto (or Off for subtitles). */
@@ -76,6 +80,10 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_ID = "id"
         private const val EXTRA_LIST = "list"
         private const val EXTRA_TITLE = "title"
+
+        /** For notifications: opens the player on one channel. */
+        fun intent(context: Context, channelId: String, title: String?): Intent = Intent(context, PlayerActivity::class.java)
+            .putExtra(EXTRA_ID, channelId).putStringArrayListExtra(EXTRA_LIST, arrayListOf(channelId)).putExtra(EXTRA_TITLE, title)
 
         fun start(context: Context, channelId: String, zapList: List<String>, title: String?) {
             val list = ArrayList(zapList.ifEmpty { listOf(channelId) }.take(2000))
@@ -111,6 +119,19 @@ class PlayerActivity : ComponentActivity() {
         setContent {
             ArenaTheme {
                 PlayerScreen(activity = this, player = player!!, state = ui.value, zapIds = ids)
+            }
+        }
+        // Scores in the corner: pinned games, your teams, the game on this channel.
+        lifecycleScope.launch {
+            val ticker = com.arena.tv.sports.ScoreTicker(app)
+            val last = HashMap<String, String>()
+            var clear: Job? = null
+            while (true) {
+                val list = runCatching { ticker.load(ui.value.channel?.id) }.getOrDefault(ui.value.scores)
+                val changed = list.filter { g -> val k = "${g.home.score}-${g.away.score}"; val prev = last.put(g.id, k); prev != null && prev != k }.map { it.id }.toSet()
+                ui.value = ui.value.copy(scores = list, goals = if (changed.isEmpty()) ui.value.goals else changed)
+                if (changed.isNotEmpty()) { clear?.cancel(); clear = launch { delay(15_000); ui.value = ui.value.copy(goals = emptySet()) } }
+                delay(if (list.any { it.isLive }) 30_000 else 90_000)
             }
         }
         // Keeps "LIVE / -7s" up to date while the controls are showing.

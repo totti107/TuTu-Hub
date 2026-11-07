@@ -147,6 +147,27 @@ class IptvRepository(
         } finally { guide.cleanup() }
     }
 
+    /** Re-tidies every channel name after the Title Optimizer settings change (no download needed). */
+    suspend fun reapplyTitles() = withContext(Dispatchers.IO) {
+        val cfg = TitleOptimizer.config
+        db.runInTransaction {
+            db.channels().fillRawNamesBlocking()
+            db.channels().rawNamesBlocking().forEach { r -> db.channels().renameBlocking(r.id, if (cfg.enabled) TitleOptimizer.clean(r.rawName, cfg) else r.rawName) }
+        }
+        _state.update { it.copy(version = it.version + 1) }
+    }
+
+    /** Only the sports channels' guide: quick, for the Sports center's "Refresh sports guide" button. */
+    suspend fun refreshSportsGuide() = run {
+        _state.update { it.copy(steps = listOf(LoadStep("Sports guide"))) }
+        val guide = GuideImport(settings.current())
+        try {
+            step(0, StepStatus.RUNNING, "Sports channels"); guide.run(sportsPhase = true)
+            step(0, StepStatus.DONE, guide.summary()); bump()
+        } catch (e: Exception) { step(0, StepStatus.FAILED); throw e }
+        finally { guide.cleanup() }
+    }
+
     /** Re-apply which playlists / categories are shown (cheap, no download). */
     suspend fun applyVisibility() = withContext(Dispatchers.IO) {
         val s = settings.current()
@@ -221,7 +242,7 @@ class IptvRepository(
         val ids = M3uParser.ids(channels)
         val base = index * 1_000_000
         val entities = channels.mapIndexed { i, c ->
-            ChannelEntity("${p.id}:${ids[i]}", p.id, true, base + i, c.name, c.logo, c.group, c.url, c.tvgId, c.tvgName, null, c.userAgent ?: ua, c.referrer, c.adult)
+            ChannelEntity("${p.id}:${ids[i]}", p.id, true, base + i, TitleOptimizer.apply(c.name), c.logo, c.group, c.url, c.tvgId, c.tvgName, null, c.userAgent ?: ua, c.referrer, c.adult, rawName = c.name)
         }
         // Keep the guide links of channels that already had one, so Live TV keeps its guide while the new one loads.
         val oldKeys = db.channels().epgKeysOf(p.id).associate { it.id to it.epgKey }

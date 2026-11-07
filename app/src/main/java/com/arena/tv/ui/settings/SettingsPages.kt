@@ -18,7 +18,9 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.Backup
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Person
@@ -36,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,8 +56,10 @@ import com.arena.tv.ui.theme.focusOutline
 /** Settings sections, shown as a side menu on TVs and tablets and as a list on phones. */
 enum class SettingsPage(val label: String, val icon: ImageVector, val hint: String) {
     PLAYLISTS("Playlists", Icons.Rounded.PlaylistPlay, "Providers, loading and categories"),
+    GUIDE("TV guide", Icons.Rounded.CalendarMonth, "Guide coverage and extra guide links"),
     PLAYBACK("Playback", Icons.Rounded.PlayCircle, "Buffer, languages, subtitles, screen"),
     BROWSING("Browsing", Icons.Rounded.ViewQuilt, "Start screen, views, clock"),
+    TITLES("Title Optimizer", Icons.Rounded.AutoFixHigh, "Clean up channel and movie names"),
     PROTECTION("Protection", Icons.Rounded.Lock, "Adult channels and PIN"),
     SPORTS("Sports", Icons.Rounded.SportsSoccer, "Sports, teams, leagues, odds"),
     ACCOUNTS("Trakt", Icons.Rounded.Person, "Sync what you watch"),
@@ -215,5 +220,153 @@ private fun BackupCard(vm: SettingsViewModel) {
             },
             confirmButton = { Button(onClick = vm::confirmRestore, modifier = Modifier.focusOutline()) { Text("Restore") } },
             dismissButton = { TextButton(onClick = { vm.pendingRestore.value = null }, modifier = Modifier.focusOutline()) { Text("Cancel") } })
+    }
+}
+
+fun LazyListScope.sportsWatchItems(p: Prefs, set: ((Prefs) -> Prefs) -> Unit, askNotifications: () -> Unit) {
+    item {
+        SetCard("Scores while watching") {
+            Text("A small scoreboard in the corner while you watch any channel. A goal lights it up.", color = ArenaColors.Muted, fontSize = 13.sp)
+            SwitchRow("Pinned matches", "Matches you pinned from a match page (\"Pin score while you watch\").", p.scorePinned) { v -> set { it.copy(scorePinned = v) } }
+            SwitchRow("Your teams", "Live games of the teams you follow, on any channel.", p.scoreTeams) { v -> set { it.copy(scoreTeams = v) } }
+            SwitchRow("The match on this channel", "When the channel you watch shows a live game.", p.scoreThisChannel) { v -> set { it.copy(scoreThisChannel = v) } }
+            ChoiceRow("Style", null, listOf("rows" to "Rows · all at once", "compact" to "Compact · one at a time"), p.scoreStyle) { v -> set { it.copy(scoreStyle = v) } }
+        }
+    }
+    item {
+        SetCard("Your teams") {
+            SwitchRow("Remind me before their matches", "10 minutes before they play, with the channel that shows it.", p.remindTeams) { v ->
+                set { it.copy(remindTeams = v) }; if (v) askNotifications()
+            }
+            SwitchRow("Final scores", "Your team's result, once the match ends.", p.finalScores) { v ->
+                set { it.copy(finalScores = v) }; if (v) askNotifications()
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------ Title Optimizer
+
+fun LazyListScope.titleItems(p: Prefs, set: ((Prefs) -> Prefs) -> Unit) {
+    item { TitleCard(p, set) }
+}
+
+@Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+private fun TitleCard(p: Prefs, set: ((Prefs) -> Prefs) -> Unit) {
+    val words = p.titleWords ?: com.arena.tv.data.TitleOptimizer.DEFAULT_WORDS
+    val cfg = com.arena.tv.data.TitleOptimizer.configOf(p).copy(enabled = true)
+    var input by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    SetCard {
+        Text("Your playlist, cleaned. Strips clutter like 4K, FHD, HEVC and country tags from every channel, movie and series name.",
+            color = ArenaColors.Muted, fontSize = 13.sp)
+        SwitchRow("Enable Title Optimizer", "Off: names show exactly as your playlist sends them.", p.titleOptimizer) { v -> set { it.copy(titleOptimizer = v) } }
+    }
+    SetCard("Live preview") {
+        listOf("|UK| Sky Sports Main Event FHD HEVC", "beIN SPORTS 1 (4K) ⚽", "AR: MBC 2 [HD] VIP").forEach { sample ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(sample, color = ArenaColors.Muted, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text("→  ", color = ArenaColors.Muted)
+                Text(com.arena.tv.data.TitleOptimizer.clean(sample, cfg), fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+    SetCard("Also remove") {
+        SwitchRow("Country prefixes", "UK:, |AR|, [EN] at the start of a name.", p.titleCountry) { v -> set { it.copy(titleCountry = v) } }
+        SwitchRow("Emojis and symbols", "⚽, ★, flags and similar.", p.titleEmoji) { v -> set { it.copy(titleEmoji = v) } }
+    }
+    SetCard("Words to remove") {
+        Text("Select a word to remove it from the list. Matching ignores case and catches (HD), [4K] or |FHD|.", color = ArenaColors.Muted, fontSize = 12.sp)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
+            words.forEach { w ->
+                androidx.compose.material3.InputChip(selected = false, onClick = { set { it.copy(titleWords = words - w) } }, label = { Text(w) },
+                    trailingIcon = { Text("✕", fontSize = 12.sp) }, modifier = Modifier.focusOutline())
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+            androidx.compose.material3.OutlinedTextField(input, { input = it }, Modifier.weight(1f), singleLine = true,
+                placeholder = { Text("Add a word, tag or emoji") }, shape = RoundedCornerShape(12.dp))
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = { val w = input.trim(); if (w.isNotEmpty() && w !in words) set { it.copy(titleWords = words + w) }; input = "" },
+                modifier = Modifier.focusOutline()) { Text("Add") }
+        }
+        TextButton(onClick = { set { it.copy(titleWords = null) } }, modifier = Modifier.focusOutline()) { Text("Reset to the default list") }
+        Text("Channels update right away. Movies and series update on the next reload.", color = ArenaColors.Muted, fontSize = 12.sp)
+    }
+}
+
+// ------------------------------------------------------------ TV guide
+
+fun LazyListScope.guideItems(vm: SettingsViewModel, playlists: List<com.arena.tv.data.Playlist>, running: Boolean) {
+    item { GuideStats(vm, running) }
+    playlists.filter { it.enabled }.forEach { pl -> item(key = "guide-${pl.id}") { GuideLinks(vm, pl) } }
+    item { NoGuideList(vm) }
+}
+
+@Composable
+private fun GuideStats(vm: SettingsViewModel, running: Boolean) {
+    val with by vm.guideChannels.collectAsState()
+    val total by vm.guideTotal.collectAsState()
+    val without = (total - with).coerceAtLeast(0)
+    val share = if (total > 0) with.toFloat() / total else 0f
+    SetCard("Overview") {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Stat("%,d".format(with), "With a guide", "${(share * 100).toInt()}% of channels", Modifier.weight(1f))
+            Stat("%,d".format(without), "No guide yet", "Matched by name only", Modifier.weight(1f))
+        }
+        androidx.compose.material3.LinearProgressIndicator(progress = { share }, modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp).size(height = 6.dp, width = 0.dp)
+            .clip(RoundedCornerShape(50)), color = ArenaColors.Accent, trackColor = ArenaColors.SurfaceHi)
+        Text("Channels with a guide are matched to games much more reliably. Adult channels aren't counted.", color = ArenaColors.Muted, fontSize = 12.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 10.dp)) {
+            Button(onClick = vm::refreshGuide, enabled = !running, modifier = Modifier.focusOutline()) { Text(if (running) "Updating…" else "Reload whole guide") }
+            OutlinedButton(onClick = { vm.refreshSportsGuide() }, enabled = !running, modifier = Modifier.focusOutline()) { Text("Sports channels only") }
+        }
+    }
+}
+
+@Composable
+private fun Stat(value: String, label: String, sub: String, modifier: Modifier) {
+    Column(modifier.clip(RoundedCornerShape(12.dp)).background(ArenaColors.SurfaceHi).padding(12.dp)) {
+        Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(label, fontSize = 14.sp)
+        Text(sub, color = ArenaColors.Muted, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun GuideLinks(vm: SettingsViewModel, pl: com.arena.tv.data.Playlist) {
+    var text by androidx.compose.runtime.remember(pl.id, pl.epgUrl) { androidx.compose.runtime.mutableStateOf(pl.epgUrl) }
+    SetCard("Extra guide links · ${pl.name}") {
+        Text(if (pl.type == com.arena.tv.data.SourceType.MAC) "XMLTV links used instead of the portal's guide. Separate several with commas."
+            else "XMLTV links added to the provider's own guide, for channels it doesn't cover. Separate several with commas.",
+            color = ArenaColors.Muted, fontSize = 12.sp)
+        androidx.compose.material3.OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().padding(top = 6.dp), placeholder = { Text("https://…/guide.xml.gz") },
+            shape = RoundedCornerShape(12.dp), maxLines = 3)
+        if (text.trim() != pl.epgUrl.trim()) Button(onClick = { vm.saveGuideLinks(pl.id, text) }, modifier = Modifier.padding(top = 8.dp).focusOutline()) { Text("Save and reload guide") }
+    }
+}
+
+@Composable
+private fun NoGuideList(vm: SettingsViewModel) {
+    val with by vm.guideChannels.collectAsState()
+    val list by androidx.compose.runtime.produceState<List<com.arena.tv.data.ChannelEntity>?>(null, with) { value = vm.withoutGuide() }
+    var sportsOnly by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+    SetCard("Channels without a guide") {
+        SwitchRow("Sports channels only", null, sportsOnly) { sportsOnly = it }
+        val shown = list.orEmpty().filter { !sportsOnly || com.arena.tv.matching.SportyGroups.isSporty(it.groupTitle) || com.arena.tv.matching.SportyGroups.isSporty(it.name) }
+        when {
+            list == null -> Text("Loading…", color = ArenaColors.Muted)
+            shown.isEmpty() -> Text("Every channel here has a guide. 🎉", color = ArenaColors.Muted)
+            else -> shown.take(60).forEach { ch ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    com.arena.tv.ui.components.Logo(ch.logo, ch.name, 28.dp); Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(ch.name, fontSize = 14.sp, maxLines = 1)
+                        Text(ch.groupTitle, color = ArenaColors.Muted, fontSize = 12.sp, maxLines = 1)
+                    }
+                    Text("No guide", color = ArenaColors.Muted, fontSize = 12.sp)
+                }
+            }
+        }
     }
 }

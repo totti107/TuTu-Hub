@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.ThumbUp
@@ -153,6 +154,7 @@ fun GameDetailScreen(gameId: String, onBack: () -> Unit, onOpenSettings: () -> U
                             icon = Icons.Rounded.PlayArrow)
                         Spacer(Modifier.height(10.dp))
                     }
+                    if (g.state != GameState.POST) PinButton(vm, Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp))
                     if (g.headToHead) listOf(g.home, g.away).forEach { team ->
                         val isFav = team.key(g.league.sport) in favs
                         OutlinedButton(onClick = { vm.toggleTeam(team, isFav) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -182,6 +184,7 @@ fun GameDetailScreen(gameId: String, onBack: () -> Unit, onOpenSettings: () -> U
             Text(g.league.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), maxLines = 1)
         }
         ScoreHeader(g, details, favs, vm::toggleTeam)
+        if (g.state != GameState.POST) PinButton(vm, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp))
         ScrollableTabRow(selectedTabIndex = t, containerColor = ArenaColors.Bg, edgePadding = 8.dp) {
             tabs.forEachIndexed { i, label -> Tab(selected = t == i, onClick = { tab = i }, text = { Text(label) }) }
         }
@@ -192,6 +195,16 @@ fun GameDetailScreen(gameId: String, onBack: () -> Unit, onOpenSettings: () -> U
         ModalBottomSheet(onDismissRequest = { showPicker = false }, containerColor = ArenaColors.Surface) {
             ChannelPicker(vm::searchChannels) { ch -> vm.confirm(ch); showPicker = false }
         }
+    }
+}
+
+@Composable
+private fun PinButton(vm: GameDetailViewModel, modifier: Modifier) {
+    val pinned by vm.pinned.collectAsStateWithLifecycle()
+    OutlinedButton(onClick = { vm.togglePin() }, modifier = modifier, shape = RoundedCornerShape(10.dp)) {
+        Icon(Icons.Rounded.PushPin, null, tint = if (pinned) ArenaColors.Accent else ArenaColors.Muted, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(if (pinned) "Score pinned while you watch" else "Pin score while you watch", Modifier.weight(1f))
     }
 }
 

@@ -35,6 +35,7 @@ class AppContainer(context: Context) {
     val parental = com.arena.tv.data.ParentalLock(settings)
     val updater = com.arena.tv.data.Updater(context.applicationContext, http)
     val backup = com.arena.tv.data.BackupManager(settings, db)
+    val reminders = com.arena.tv.data.Reminders(context.applicationContext)
 
     /** Latest playback/browsing options, readable without waiting (players read them when they start). */
     val prefs = kotlinx.coroutines.flow.MutableStateFlow(com.arena.tv.data.Prefs())
@@ -43,7 +44,14 @@ class AppContainer(context: Context) {
 
     init {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default).launch {
-            settings.flow.collect { prefs.value = it.prefs; com.arena.tv.ui.components.Time.clockPref = it.prefs.clock }
+            settings.flow.collect {
+                prefs.value = it.prefs; com.arena.tv.ui.components.Time.clockPref = it.prefs.clock
+                com.arena.tv.data.TitleOptimizer.config = com.arena.tv.data.TitleOptimizer.configOf(it.prefs)
+            }
         }
+        // Team reminders: alarms are set from every scoreboard the app loads, plus a periodic check.
+        val bg = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        sports.onGames = { games -> bg.launch { runCatching { reminders.schedule(games) } } }
+        reminders.startDailyCheck()
     }
 }

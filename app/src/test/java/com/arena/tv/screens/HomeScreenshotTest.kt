@@ -31,6 +31,7 @@ import com.arena.tv.ui.home.HomeData
 import com.arena.tv.ui.settings.SettingsMenu
 import com.arena.tv.ui.settings.SettingsPage
 import com.arena.tv.ui.settings.playbackItems
+import com.arena.tv.ui.settings.titleItems
 import com.arena.tv.ui.theme.ArenaColors
 import com.arena.tv.ui.theme.ArenaTheme
 import org.junit.Rule
@@ -63,6 +64,33 @@ class HomeScreenshotTest {
             ArenaTheme {
                 CompositionLocalProvider(LocalWide provides true, LocalCompactChrome provides true) {
                     Column(Modifier.fillMaxSize().background(ArenaColors.Bg)) { HomeContent(sample(), actions) }
+                }
+            }
+        }
+    }
+
+    @Test fun scoresWhileWatching() {
+        val games = EspnParser.parseScoreboard(res("soccer_scoreboard.json"), Leagues.byKey("soccer/uefa.champions")!!)
+            .take(3).map { it.copy(state = GameState.LIVE, statusText = "67'") }
+        paparazzi.snapshot {
+            ArenaTheme {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF2B4A2E))) {
+                    com.arena.tv.ui.player.ScoreOverlay(games, setOf(games[1].id), compact = false)
+                }
+            }
+        }
+    }
+
+    @Test fun titleOptimizerOnTv() {
+        paparazzi.snapshot {
+            ArenaTheme {
+                CompositionLocalProvider(LocalWide provides true, LocalCompactChrome provides true) {
+                    Column(Modifier.fillMaxSize().background(ArenaColors.Bg)) {
+                        Row(Modifier.fillMaxSize()) {
+                            SettingsMenu(SettingsPage.TITLES, true, Modifier.width(270.dp).fillMaxHeight()) {}
+                            LazyColumn(Modifier.weight(1f).fillMaxHeight()) { titleItems(Prefs(titleOptimizer = true, titleCountry = true)) {} }
+                        }
+                    }
                 }
             }
         }
