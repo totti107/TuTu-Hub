@@ -68,6 +68,30 @@ data class Playlist(
         }
 }
 
+/** Playback and browsing options (Settings → Playback / Browsing). */
+@kotlinx.serialization.Serializable
+data class Prefs(
+    /** Screen the app opens on: home, sports, live, movies, series. */
+    val startScreen: String = "home",
+    /** Stream buffer: low (starts fastest), balanced, high (smoothest on weak connections). */
+    val buffer: String = "balanced",
+    /** Preferred audio language ("" = the stream's default). */
+    val audioLang: String = "",
+    /** Preferred subtitle language ("" = off unless the stream forces them). */
+    val subtitleLang: String = "",
+    /** small, normal, large, huge */
+    val subtitleSize: String = "normal",
+    val keepScreenOn: Boolean = true,
+    /** Show the time on screen while watching, not only with the controls. */
+    val clockAlways: Boolean = false,
+    /** Switch the TV's refresh rate to the video's frame rate (removes judder). */
+    val matchFrameRate: Boolean = false,
+    /** Live TV opens in: library or guide. */
+    val liveView: String = "library",
+    /** system, 12 or 24 */
+    val clock: String = "system",
+)
+
 data class TraktAuth(
     val clientId: String = "",
     val clientSecret: String = "",
@@ -96,6 +120,7 @@ data class AppSettings(
     /** Odds as decimal (2.50) or American (+150). */
     val decimalOdds: Boolean = true,
     val trakt: TraktAuth = TraktAuth(),
+    val prefs: Prefs = Prefs(),
 ) {
     val hasSource get() = playlists.any { it.valid && it.enabled }
     /** Playlists whose channels are shown right now. */
@@ -142,6 +167,7 @@ class SettingsStore(private val context: Context) {
         val oddsAmerican = stringPreferencesKey("odds_format")
         val pin = stringPreferencesKey("parental_pin")
         val hideAdult = stringPreferencesKey("hide_adult")
+        val prefs = stringPreferencesKey("prefs")
     }
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -170,6 +196,7 @@ class SettingsStore(private val context: Context) {
             decimalOdds = p[K.oddsAmerican] != "american",
             parentalPin = p[K.pin] ?: "",
             hideAdult = p[K.hideAdult] == "1",
+            prefs = p[K.prefs]?.let { runCatching { json.decodeFromString<Prefs>(it) }.getOrNull() } ?: Prefs(),
             trakt = TraktAuth(p[K.tId] ?: "", p[K.tSecret] ?: "", p[K.tAccess] ?: "", p[K.tRefresh] ?: "", p[K.tExpires] ?: 0, p[K.tUser] ?: ""),
         )
     }
@@ -189,6 +216,13 @@ class SettingsStore(private val context: Context) {
     /** Bumped when stored channel data must be re-imported after an app update. */
     suspend fun dataVersion(): Long = context.dataStore.data.first()[K.dataVersion] ?: 0
     suspend fun setDataVersion(v: Long) = context.dataStore.edit { it[K.dataVersion] = v }
+
+    suspend fun updatePrefs(f: (Prefs) -> Prefs) = editLock.withLock {
+        context.dataStore.edit { p ->
+            val cur = p[K.prefs]?.let { runCatching { json.decodeFromString<Prefs>(it) }.getOrNull() } ?: Prefs()
+            p[K.prefs] = json.encodeToString(Prefs.serializer(), f(cur))
+        }
+    }
 
     suspend fun setActivePlaylist(id: String) = context.dataStore.edit { it[K.active] = id }
     suspend fun setHiddenGroups(h: Set<String>) = context.dataStore.edit { it[K.hidden] = h }

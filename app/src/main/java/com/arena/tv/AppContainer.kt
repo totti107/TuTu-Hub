@@ -9,6 +9,7 @@ import com.arena.tv.data.TraktRepository
 import com.arena.tv.data.VodRepository
 import com.arena.tv.sports.SportsApi
 import com.arena.tv.sports.SportsRepository
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -33,4 +34,16 @@ class AppContainer(context: Context) {
     val finder = ChannelFinder(db, iptv, settings)
     val parental = com.arena.tv.data.ParentalLock(settings)
     val updater = com.arena.tv.data.Updater(context.applicationContext, http)
+    val backup = com.arena.tv.data.BackupManager(settings, db)
+
+    /** Latest playback/browsing options, readable without waiting (players read them when they start). */
+    val prefs = kotlinx.coroutines.flow.MutableStateFlow(com.arena.tv.data.Prefs())
+    /** Home screen shortcuts into Live TV: "favorites" or "guide". */
+    val liveRequest = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    init {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default).launch {
+            settings.flow.collect { prefs.value = it.prefs; com.arena.tv.ui.components.Time.clockPref = it.prefs.clock }
+        }
+    }
 }

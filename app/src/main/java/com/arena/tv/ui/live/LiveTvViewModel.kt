@@ -43,7 +43,7 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
     val favCount = c.db.channels().favoriteCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val recentCount = c.db.channels().recentCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val tab = MutableStateFlow(0) // 0 library, 1 EPG, 2 sports
+    val tab = MutableStateFlow(if (c.prefs.value.liveView == "guide") 1 else 0) // 0 library, 1 EPG, 2 sports
     val section = MutableStateFlow<Section?>(null)
     val query = MutableStateFlow("")
     val groupQuery = MutableStateFlow("")
@@ -60,6 +60,17 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
     val settings = c.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     init {
+        // Shortcuts from the Home screen ("Favorites", "TV Guide").
+        viewModelScope.launch {
+            c.liveRequest.collect { r ->
+                when (r) {
+                    "guide" -> tab.value = 1
+                    "favorites" -> { tab.value = 0; section.value = Section.Favorites }
+                    "library" -> tab.value = 0
+                }
+                if (r != null) c.liveRequest.value = null
+            }
+        }
         viewModelScope.launch {
             combine(groups, favoriteIds, tab) { g, f, t -> Triple(g, f, t) }.collect { (g, f, t) ->
                 val cur = section.value

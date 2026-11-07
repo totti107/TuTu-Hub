@@ -65,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -119,6 +120,7 @@ fun PlayerScreen(activity: PlayerActivity, player: ExoPlayer, state: PlayerUi, z
                     useController = false
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
                     setKeepContentOnPlayerReset(false)
+                    subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * Streams.subtitleScale(ctx.app.prefs.value))
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     this.player = player
                 }
@@ -150,6 +152,7 @@ fun PlayerScreen(activity: PlayerActivity, player: ExoPlayer, state: PlayerUi, z
             }
         }
 
+        if (!state.inPip && !state.controls && LocalContext.current.app.prefs.value.clockAlways) CornerClock(Modifier.align(Alignment.TopEnd))
         if (!state.inPip) {
             AnimatedVisibility(state.controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
                 Controls(activity, state) { lastTouch = System.currentTimeMillis() }
@@ -378,3 +381,12 @@ private fun SleepPanel(a: PlayerActivity, at: Long?) {
     }
 }
 
+
+/** Settings → Playback → "Clock always visible": the time in the corner while you watch. */
+@Composable
+fun CornerClock(modifier: Modifier = Modifier) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(10_000); now = System.currentTimeMillis() } }
+    Text(Time.clock(now), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+        modifier = modifier.padding(18.dp).clip(RoundedCornerShape(10.dp)).background(Color(0x88000000)).padding(horizontal = 10.dp, vertical = 4.dp))
+}

@@ -100,7 +100,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (app.prefs.value.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
@@ -251,16 +251,15 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun createPlayer() {
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 50_000, 2_000, 4_000)
-            .build()
+        val prefs = app.prefs.value
         val renderers = DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)
         player = ExoPlayer.Builder(this, renderers)
-            .setLoadControl(loadControl)
+            .setLoadControl(Streams.loadControl(live = true, buffer = prefs.buffer))
             .build().apply {
                 playWhenReady = true
+                Streams.applyLanguages(this, prefs)
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {
                         ui.value = ui.value.copy(buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE && ui.value.error == null)
@@ -272,6 +271,7 @@ class PlayerActivity : ComponentActivity() {
                         if (videoSize.height > 0) ui.value = ui.value.copy(videoInfo = "${videoSize.height}p", badges = badges())
                     }
                     override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                        if (app.prefs.value.matchFrameRate) player?.videoFormat?.frameRate?.let { Streams.matchFrameRate(this@PlayerActivity, it) }
                         ui.value = ui.value.copy(badges = badges(), seekable = player?.isCurrentMediaItemSeekable == true)
                     }
                     override fun onIsPlayingChanged(isPlaying: Boolean) { ui.value = ui.value.copy(playing = isPlaying) }

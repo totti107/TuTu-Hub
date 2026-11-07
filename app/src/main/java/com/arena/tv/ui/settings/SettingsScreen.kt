@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -116,9 +117,20 @@ fun SettingsScreen() {
     val wide = LocalWide.current
     val followed = settings.followedSports.ifEmpty { Sport.entries.map { it.espn }.toSet() }
 
+    var page by rememberSaveable { mutableStateOf<SettingsPage?>(if (wide) SettingsPage.PLAYLISTS else null) }
+    if (wide && page == null) page = SettingsPage.PLAYLISTS
+    androidx.activity.compose.BackHandler(enabled = !wide && page != null) { page = null }
+
     Column(Modifier.fillMaxSize()) {
-        ArenaTopBar(left = { PillTabs(listOf("Settings"), 0) {} })
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = if (wide) 40.dp else 0.dp, end = if (wide) 40.dp else 0.dp, bottom = 40.dp)) {
+        ArenaTopBar(left = {
+            if (!wide && page != null) PillTabs(listOf("‹  ${page!!.label}"), 0) { page = null }
+            else PillTabs(listOf("Settings"), 0) {}
+        })
+        Row(Modifier.fillMaxSize()) {
+        if (wide || page == null) SettingsMenu(page, wide, if (wide) Modifier.width(270.dp).fillMaxHeight() else Modifier.fillMaxSize()) { page = it }
+        val pg = page
+        if (pg != null) LazyColumn(Modifier.weight(1f).fillMaxHeight(), contentPadding = PaddingValues(start = 0.dp, end = if (wide) 32.dp else 0.dp, bottom = 40.dp)) {
+            if (pg == SettingsPage.PLAYLISTS) {
             // ---------------- Playlists ----------------
             item { SectionHeader("Playlists") }
             if (settings.playlists.size > 1) item {
@@ -173,14 +185,19 @@ fun SettingsScreen() {
                 }
             }
 
-            // ---------------- App updates ----------------
+            }
+            if (pg == SettingsPage.UPDATES) {
             item { SectionHeader("App updates") }
             item { UpdateCard() }
+            }
 
+            if (pg == SettingsPage.PROTECTION) {
             // ---------------- Parental control ----------------
             item { SectionHeader("Adult channels") }
             item { ParentalCard(vm, settings) }
 
+            }
+            if (pg == SettingsPage.SPORTS) {
             // ---------------- Sports & teams ----------------
             item { SectionHeader("My sports & teams") }
             item {
@@ -240,14 +257,23 @@ fun SettingsScreen() {
                 }
             }
 
+            }
+            if (pg == SettingsPage.ACCOUNTS) {
             item { SectionHeader("Trakt") }
             item { TraktCard(vm, settings) }
 
+            }
+            if (pg == SettingsPage.UPDATES) {
             item { SectionHeader("About") }
             item {
-                Text("TuTu TV v${BuildConfig.VERSION_NAME} · Scores & stats: ESPN public data. This app contains no channels; it plays the playlists you add.",
+                Text("TuTu v${BuildConfig.VERSION_NAME} · Scores & stats: ESPN public data. This app contains no channels; it plays the playlists you add.",
                     color = ArenaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
             }
+            }
+            if (pg == SettingsPage.PLAYBACK) { item { SectionHeader("Playback") }; playbackItems(settings.prefs, vm::updatePrefs) }
+            if (pg == SettingsPage.BROWSING) { item { SectionHeader("Browsing") }; browsingItems(settings.prefs, vm::updatePrefs) }
+            if (pg == SettingsPage.BACKUP) { item { SectionHeader("Backup & restore") }; backupItems(vm) }
+        }
         }
     }
 

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Settings
@@ -69,12 +70,15 @@ import com.arena.tv.ui.vod.VodHomeScreen
 import kotlinx.coroutines.launch
 
 private enum class Section(val route: String, val label: String, val icon: ImageVector) {
+    HOME("home", "Home", Icons.Rounded.Home),
     SPORTS("sports", "Sports", Icons.Rounded.SportsSoccer),
     LIVE("live", "Live TV", Icons.Rounded.LiveTv),
     MOVIES("movies", "Movies", Icons.Rounded.Movie),
     SERIES("series", "Series", Icons.Rounded.VideoLibrary),
     SETTINGS("settings", "Settings", Icons.Rounded.Settings),
 }
+
+private var startRoute = "home"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,6 +90,10 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { app.iptv.refreshIfStale() }
         app.trakt.syncIfStale()
         if (savedInstanceState == null) app.updater.check()
+        // The start screen is a setting; read it before the first frame.
+        val prefs = kotlinx.coroutines.runBlocking { app.settings.current().prefs }
+        app.prefs.value = prefs
+        startRoute = Section.entries.firstOrNull { it.route == prefs.startScreen }?.route ?: Section.HOME.route
         setContent { ArenaTheme { ArenaRoot(); com.arena.tv.ui.components.UpdateDialog(app.updater) } }
     }
 }
@@ -104,7 +112,7 @@ private fun ArenaRoot() {
         restoreState = true
     }
 
-    val sectionNav = SectionNav(Section.entries.map { it.label to it.icon }, (current ?: Section.SPORTS).ordinal) { go(Section.entries[it]) }
+    val sectionNav = SectionNav(Section.entries.map { it.label to it.icon }, (current ?: Section.HOME).ordinal) { go(Section.entries[it]) }
     val compactChrome = wide && LocalConfiguration.current.screenWidthDp < 1150
     val context = androidx.compose.ui.platform.LocalContext.current
     val decimalOdds by remember { context.app.settings.flow.map { it.decimalOdds } }.collectAsState(initial = true)
@@ -118,7 +126,7 @@ private fun ArenaRoot() {
                 containerColor = ArenaColors.Bg,
                 bottomBar = {
                     if (current != null) NavigationBar(containerColor = ArenaColors.Panel, tonalElevation = 0.dp) {
-                        Section.entries.forEach { s ->
+                        Section.entries.filter { it != Section.SETTINGS }.forEach { s ->
                             NavigationBarItem(
                                 selected = s == current, onClick = { go(s) },
                                 icon = { Icon(s.icon, null) }, label = { Text(s.label, fontSize = 11.sp, maxLines = 1) },
@@ -136,7 +144,19 @@ private fun ArenaRoot() {
 
 @Composable
 private fun Graph(nav: NavHostController, openSettings: () -> Unit) {
-    NavHost(nav, startDestination = Section.SPORTS.route) {
+    NavHost(nav, startDestination = startRoute) {
+        composable(Section.HOME.route) {
+            fun open(s: Section) = nav.navigate(s.route) {
+                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true; restoreState = true
+            }
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            com.arena.tv.ui.home.HomeScreen(com.arena.tv.ui.home.HomeActions(
+                live = { r -> ctx.app.liveRequest.value = r; open(Section.LIVE) },
+                sports = { open(Section.SPORTS) }, movies = { open(Section.MOVIES) }, series = { open(Section.SERIES) },
+                game = { nav.navigate("game/${it.id}") }, vod = { nav.navigate("vod/$it") }, settings = openSettings,
+            ))
+        }
         composable(Section.SPORTS.route) {
             SportsHubScreen(onOpenGame = { nav.navigate("game/${it.id}") }, onOpenSettings = openSettings)
         }

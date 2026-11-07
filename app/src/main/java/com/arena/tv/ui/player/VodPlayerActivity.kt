@@ -77,14 +77,17 @@ class VodPlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (app.prefs.value.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        player = Streams.player(this, live = false)
+        player = Streams.player(this, live = false, app.prefs.value)
         player.addListener(object : Player.Listener {
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                if (app.prefs.value.matchFrameRate) player.videoFormat?.frameRate?.let { Streams.matchFrameRate(this@VodPlayerActivity, it) }
+            }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) { scrobble("start"); scrobbling = true } else if (scrobbling && player.playbackState != Player.STATE_ENDED) scrobble("pause")
                 if (!isPlaying) saveProgress()
@@ -123,10 +126,12 @@ class VodPlayerActivity : ComponentActivity() {
                             setShowNextButton(false); setShowPreviousButton(false)
                             setShowFastForwardButton(true); setShowRewindButton(true)
                             controllerShowTimeoutMs = 3500
+                            subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * Streams.subtitleScale(app.prefs.value))
                             setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controlsVisible.value = v == android.view.View.VISIBLE })
                         }
                     }, modifier = Modifier.fillMaxSize())
 
+                    if (!controlsVisible.value && app.prefs.value.clockAlways) CornerClock(Modifier.align(Alignment.TopEnd))
                     AnimatedVisibility(controlsVisible.value, enter = fadeIn(), exit = fadeOut()) {
                         Row(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent))).padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically) {

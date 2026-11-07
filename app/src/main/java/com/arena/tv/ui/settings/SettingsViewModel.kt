@@ -52,6 +52,55 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun reload(id: String?) = viewModelScope.launch { c.iptv.refreshAll(onlyId = id) }
     fun refreshGuide() = viewModelScope.launch { c.iptv.refreshEpg() }
 
+    // ---------------- Playback & browsing ----------------
+    fun updatePrefs(f: (com.arena.tv.data.Prefs) -> com.arena.tv.data.Prefs) { viewModelScope.launch { c.settings.updatePrefs(f) } }
+
+    // ---------------- Backup & restore ----------------
+    /** Result of the last backup action, shown under the buttons. */
+    val backupMessage = MutableStateFlow<String?>(null)
+    /** A backup waiting for the user to confirm it replaces this device's playlists. */
+    val pendingRestore = MutableStateFlow<com.arena.tv.data.Backup?>(null)
+    val backupUrl = MutableStateFlow<String?>(null)
+    private var backupServer: com.arena.tv.data.BackupServer? = null
+
+    fun exportTo(context: android.content.Context, uri: android.net.Uri) = viewModelScope.launch {
+        backupMessage.value = runCatching {
+            val text = c.backup.export()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                context.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(text.toByteArray()) }
+            }
+            "✓ Backup saved."
+        }.getOrElse { "Couldn't save the backup: ${it.message}" }
+    }
+
+    fun importFrom(context: android.content.Context, uri: android.net.Uri) = viewModelScope.launch {
+        runCatching {
+            val text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) }
+            }
+            pendingRestore.value = c.backup.parse(text)
+        }.onFailure { backupMessage.value = it.message ?: "Couldn't read that file." }
+    }
+
+    fun confirmRestore() = viewModelScope.launch {
+        val b = pendingRestore.value ?: return@launch
+        pendingRestore.value = null
+        runCatching { c.backup.restore(b) }
+            .onSuccess { backupMessage.value = "✓ Restored ${b.playlists.size} playlist(s). Loading channels…"; stopBackupServer(); c.iptv.refreshAll(onlyId = null) }
+            .onFailure { backupMessage.value = "Couldn't restore: ${it.message}" }
+    }
+
+    fun startBackupServer() {
+        stopBackupServer()
+        val s = com.arena.tv.data.BackupServer(
+            exportJson = { kotlinx.coroutines.runBlocking { c.backup.export() } },
+            onReceived = { text -> runCatching { pendingRestore.value = c.backup.parse(text); null }.getOrElse { it.message ?: "Not a TuTu backup." } },
+        )
+        backupServer = s
+        backupUrl.value = runCatching { s.start() }.getOrNull() ?: ""
+    }
+    fun stopBackupServer() { backupServer?.stop(); backupServer = null; backupUrl.value = null }
+
     // Phone entry (QR)
     val phoneDraft = MutableStateFlow<Playlist?>(null)
     val phoneUrl = MutableStateFlow<String?>(null)
@@ -63,7 +112,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         phoneUrl.value = s.start() ?: ""
     }
     fun stopPhoneEntry() { server?.stop(); server = null; phoneUrl.value = null; phoneDraft.value = null }
-    override fun onCleared() { stopPhoneEntry() }
+    override fun onCleared() { stopPhoneEntry(); stopBackupServer() }
 
     // ---------------- Channel categories ----------------
     val allGroups: StateFlow<List<PlaylistGroup>> = c.settings.flow.map { it.playlists.filter { p -> p.enabled }.map { p -> p.id } }
