@@ -60,6 +60,10 @@ class Updater(private val context: Context, private val http: OkHttpClient) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state
+    /** The newest version found online, if it's newer than this one (kept even after "Later"). */
+    private val _latest = MutableStateFlow<Release?>(null)
+    val latest: StateFlow<Release?> = _latest
+
     /** Builds the user said "Later" to; not offered again until the app restarts. */
     private var dismissed = 0
     private val file get() = File(context.cacheDir, "updates/TuTu-update.apk")
@@ -77,6 +81,7 @@ class Updater(private val context: Context, private val http: OkHttpClient) {
                     if (r.code == 404) return@use State.UpToDate // nothing published yet
                     if (!r.isSuccessful) error("GitHub answered ${r.code}")
                     val rel = parse(r.body?.string().orEmpty())
+                    _latest.value = rel?.takeIf { it.build > BuildConfig.VERSION_CODE }
                     when {
                         rel == null || rel.build <= BuildConfig.VERSION_CODE -> State.UpToDate
                         !manual && rel.build == dismissed -> State.Idle

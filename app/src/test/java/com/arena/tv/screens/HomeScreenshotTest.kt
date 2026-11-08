@@ -56,7 +56,7 @@ class HomeScreenshotTest {
         val film = VodEntity(key = "m:1", playlistId = "p", kind = 0, providerId = "1", position = 0, name = "The Long Night Shift", poster = null,
             categoryId = "1", rating = 7.4, year = 2024, added = 0, ext = null, url = null, tmdb = null, plot = null, genre = null, backdrop = null)
         return HomeData(channels = 27_412, movies = 263_118, series = 34_207, favorites = 12, logos = logos, games = games,
-            resume = film to ProgressEntity("m:1", "m:1", 2_400_000, 6_000_000, 0, "The Long Night Shift"))
+            resume = film to ProgressEntity("m:1", "m:1", 2_400_000, 6_000_000, 0, "The Long Night Shift"), version = "3.10.1", latest = "3.11.0")
     }
 
     @Test fun homeOnTv() {

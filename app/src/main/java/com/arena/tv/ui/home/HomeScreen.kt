@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FiberManualRecord
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -97,6 +98,9 @@ data class HomeData(
     val logos: List<ChannelEntity> = emptyList(), val moviePosters: List<String> = emptyList(), val seriesPosters: List<String> = emptyList(),
     val resume: Pair<com.arena.tv.data.VodEntity, com.arena.tv.data.ProgressEntity>? = null, val games: List<Game> = emptyList(),
     val reload: () -> Unit = {}, val checkUpdates: () -> Unit = {},
+    /** Installed version and what the updater knows ("3.11.0 available", downloading…). */
+    val version: String = "", val update: com.arena.tv.data.Updater.State = com.arena.tv.data.Updater.State.Idle,
+    val latest: String? = null,
 ) { val liveCount get() = games.count { it.isLive } }
 
 private val TIPS = listOf(
@@ -129,7 +133,10 @@ fun HomeScreen(a: HomeActions) {
     val sp by vm.seriesPosters.collectAsStateWithLifecycle()
     val resume by vm.resume.collectAsStateWithLifecycle()
     val games by vm.games.collectAsStateWithLifecycle()
-    HomeContent(HomeData(channels, movies, series, favorites, hasSource, logos, mp, sp, resume, games, { vm.reload() }, { vm.checkUpdates() }), a)
+    val update by vm.update.collectAsStateWithLifecycle()
+    val latest by vm.latest.collectAsStateWithLifecycle()
+    HomeContent(HomeData(channels, movies, series, favorites, hasSource, logos, mp, sp, resume, games, { vm.reload() }, { vm.updateTile() },
+        vm.version, update, latest?.version), a)
 }
 
 @Composable
@@ -173,7 +180,7 @@ private fun WideHome(vm: HomeData, a: HomeActions) {
             SmallTile("Playlists", "Manage", Icons.AutoMirrored.Rounded.PlaylistPlay, a.settings, Modifier.weight(1f))
             SmallTile("Recordings", "Saved shows", Icons.Rounded.FiberManualRecord, a.recordings, Modifier.weight(1f))
             SmallTile("Reload", "Channels", Icons.Rounded.Refresh, vm.reload, Modifier.weight(1f))
-            SmallTile("Updates", "New version", Icons.Rounded.SystemUpdate, vm.checkUpdates, Modifier.weight(1f))
+            UpdateTile(vm, Modifier.weight(1f))
             SmallTile("Settings", "All options", Icons.Rounded.Settings, a.settings, Modifier.weight(1f))
         }
     }
@@ -205,7 +212,7 @@ private fun PhoneHome(vm: HomeData, a: HomeActions) {
             SmallTile("Planner", null, Icons.Rounded.CalendarMonth, a.planner, Modifier.weight(1f))
         }
         Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SmallTile("Updates", null, Icons.Rounded.SystemUpdate, vm.checkUpdates, Modifier.weight(1f))
+            UpdateTile(vm, Modifier.weight(1f))
             SmallTile("Settings", null, Icons.Rounded.Settings, a.settings, Modifier.weight(1f))
         }
     }
@@ -281,15 +288,16 @@ private fun PosterTile(
 ) {
     Tile(modifier, onClick) {
         // Fanned posters on the right, like a hand of cards.
-        Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight(0.82f).padding(end = 14.dp)) {
+        Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight(0.82f).fillMaxWidth(0.5f).padding(end = 14.dp), contentAlignment = Alignment.CenterEnd) {
             posters.reversed().forEachIndexed { i, url ->
                 val n = posters.size - 1 - i
                 AsyncImage(url, null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxHeight().aspectRatio(0.68f).offset(x = (-n * 26).dp).rotate(-n * 7f)
+                    modifier = Modifier.fillMaxHeight().aspectRatio(0.68f).offset(x = (-n * 18).dp).rotate(-n * 6f)
                         .clip(RoundedCornerShape(10.dp)).border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp)))
             }
         }
-        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.background(Brush.horizontalGradient(listOf(Color(0xE6121315), Color(0xB3121315), Color.Transparent))).padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically) {
             IconBubble(icon, 36.dp); Spacer(Modifier.width(10.dp))
             Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         }
@@ -409,5 +417,24 @@ private fun SmallTile(title: String, desc: String?, icon: ImageVector, onClick: 
             Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             desc?.let { Text(it, color = ArenaColors.Muted, fontSize = 12.sp, maxLines = 1) }
         }
+    }
+}
+
+/** Shows the installed version; lights up green when a new one is out. Selecting it updates. */
+@Composable
+private fun UpdateTile(d: HomeData, modifier: Modifier) {
+    val st = d.update
+    val ready = d.latest != null && st !is com.arena.tv.data.Updater.State.Downloading
+    val (title, sub) = when {
+        st is com.arena.tv.data.Updater.State.Downloading -> "Downloading…" to "${(st.progress * 100).toInt()}%"
+        st is com.arena.tv.data.Updater.State.Ready || st is com.arena.tv.data.Updater.State.NeedsPermission -> "Update ready" to "Select to install"
+        d.latest != null -> "Update ready" to "v${d.latest} · select to install"
+        st == com.arena.tv.data.Updater.State.Checking -> "Checking…" to "v${d.version}"
+        st == com.arena.tv.data.Updater.State.UpToDate -> "Up to date" to "v${d.version}"
+        else -> "Updates" to "v${d.version}"
+    }
+    Box(modifier.fillMaxHeight().then(if (ready) Modifier.clip(TileShape).background(ArenaColors.Accent.copy(alpha = 0.22f))
+        .border(2.dp, ArenaColors.Accent, TileShape) else Modifier)) {
+        SmallTile(title, sub, if (ready) Icons.Rounded.Download else Icons.Rounded.SystemUpdate, d.checkUpdates, Modifier.fillMaxSize())
     }
 }

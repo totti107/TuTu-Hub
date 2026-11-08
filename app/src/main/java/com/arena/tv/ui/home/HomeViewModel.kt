@@ -85,5 +85,18 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun checkUpdates() = c.updater.check(manual = true)
+    val update = c.updater.state
+    val latest = c.updater.latest
+    val version: String get() = c.updater.currentVersion
+    /** Updates tile: install what's waiting, otherwise look for a new version. */
+    fun updateTile() {
+        when (val s = c.updater.state.value) {
+            is com.arena.tv.data.Updater.State.Available -> c.updater.download(s.release)
+            is com.arena.tv.data.Updater.State.Ready -> c.updater.install(s.release)
+            is com.arena.tv.data.Updater.State.NeedsPermission -> c.updater.install(s.release)
+            is com.arena.tv.data.Updater.State.Downloading -> {}
+            else -> c.updater.latest.value?.let { c.updater.download(it) } ?: c.updater.check(manual = true)
+        }
+    }
     fun reload() = viewModelScope.launch { c.iptv.refreshAll() }
 }
