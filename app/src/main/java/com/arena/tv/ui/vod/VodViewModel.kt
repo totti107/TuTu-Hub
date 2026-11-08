@@ -169,5 +169,6 @@ class VodViewModel(private val c: AppContainer, val kind: Int) : ViewModel() {
         heroDetails.update { it + (v.key to d) }
     }
 
-    fun refreshAll() = viewModelScope.launch { c.iptv.refreshAll() }
+    fun refreshAll() { com.arena.tv.data.LibraryUpdates.start(c.appContext) }
+    val library = c.iptv.library
 }

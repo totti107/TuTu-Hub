@@ -87,7 +87,12 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(ArenaColors.Bg.toArgb()),
             navigationBarStyle = SystemBarStyle.dark(ArenaColors.Bg.toArgb()),
         )
-        lifecycleScope.launch { app.iptv.refreshIfStale() }
+        lifecycleScope.launch {
+            app.iptv.refreshIfStale()
+            // Movies & series: their own schedule; catch up now if the overnight update was missed.
+            if (app.iptv.anyLibraryDue()) com.arena.tv.data.LibraryUpdates.start(this@MainActivity, onlyDue = true)
+        }
+        com.arena.tv.data.LibraryUpdates.arm(this)
         app.trakt.syncIfStale()
         if (savedInstanceState == null) app.updater.check()
         // The start screen is a setting; read it before the first frame.

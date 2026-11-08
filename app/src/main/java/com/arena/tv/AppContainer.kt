@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit
 
 /** Simple manual dependency container, created once in [ArenaApp]. */
 class AppContainer(context: Context) {
+    val appContext: Context = context.applicationContext
     val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS)

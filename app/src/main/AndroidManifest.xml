@@ -67,6 +67,8 @@
 
         <service android:name=".data.RecordingService" android:exported="false" android:foregroundServiceType="dataSync" />
         <receiver android:name=".data.RecordingReceiver" android:exported="false" />
+        <service android:name=".data.LibraryService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <receiver android:name=".data.LibraryReceiver" android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

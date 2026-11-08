@@ -140,6 +140,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val r = context.app.reminders
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             r.startDailyCheck()
+            LibraryUpdates.arm(context)
             val pending = goAsync()
             CoroutineScope(Dispatchers.IO).launch { try { runCatching { context.app.recordings.rearm() } } finally { pending.finish() } }
             return

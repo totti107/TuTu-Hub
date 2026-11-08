@@ -181,6 +181,10 @@ fun SettingsScreen() {
                 }
             }
 
+            // ---------------- Movies & series (own schedule) ----------------
+            item { SectionHeader("Movies & Series") }
+            item { LibraryCard(vm, settings) }
+
             // ---------------- Categories ----------------
             item { SectionHeader("Channel categories") }
             item {
@@ -677,5 +681,39 @@ private fun UpdateCard() {
             }
             OutlinedButton(onClick = { updater.check(manual = true) }, modifier = Modifier.focusOutline()) { Text("Check for updates") }
         }
+    }
+}
+
+/** Movies & series update on their own schedule (overnight by default), separately from channels and guide. */
+@Composable
+private fun LibraryCard(vm: SettingsViewModel, settings: AppSettings) {
+    val lib by vm.library.collectAsStateWithLifecycle()
+    val on = settings.playlists.filter { it.enabled && it.type != SourceType.MAC }
+    val movies = on.filter { it.loadMovies }.sumOf { it.movieCount }
+    val series = on.filter { it.loadSeries }.sumOf { it.seriesCount }
+    val last = on.maxOfOrNull { it.lastVod } ?: 0
+    Card {
+        Text("Movies and series don't change often, so they update on their own — \"Reload all\" only refreshes channels and the TV guide.",
+            color = ArenaColors.Muted, fontSize = 13.sp)
+        Spacer(Modifier.height(8.dp))
+        Text("${"%,d".format(movies)} movies · ${"%,d".format(series)} series" + if (last > 0) " · updated ${ago(last)}" else " · not loaded yet",
+            fontWeight = FontWeight.SemiBold)
+        if (lib.running) {
+            Text(lib.message ?: "Updating…", fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+            Spacer(Modifier.height(6.dp)); LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+        lib.error?.let { Text("⚠ $it", color = ArenaColors.Live, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+            Text("Update automatically", Modifier.weight(1f))
+            com.arena.tv.ui.components.DropChip(
+                when (settings.prefs.vodSchedule) { "3days" -> "Every 3 days"; "weekly" -> "Weekly"; "manual" -> "Only when I press Update"; else -> "Daily, overnight" },
+                listOf("daily" to "Daily, overnight", "3days" to "Every 3 days", "weekly" to "Weekly", "manual" to "Only when I press Update"),
+                settings.prefs.vodSchedule) { v -> vm.updatePrefs { it.copy(vodSchedule = v) } }
+        }
+        OutlinedButton(onClick = vm::updateLibrary, enabled = !lib.running, modifier = Modifier.padding(top = 6.dp).focusOutline()) {
+            Text(if (lib.running) "Updating…" else "Update movies & series now")
+        }
+        Text("Your library stays available while it updates. Turn movies or series off per playlist with Edit.", color = ArenaColors.Muted, fontSize = 12.sp,
+            modifier = Modifier.padding(top = 6.dp))
     }
 }

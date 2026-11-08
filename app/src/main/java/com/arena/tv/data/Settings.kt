@@ -42,6 +42,8 @@ data class Playlist(
     val guideSportsOnly: Boolean = false,
     val lastRefresh: Long = 0,
     val lastEpg: Long = 0,
+    /** When movies & series were last updated (they update on their own schedule). */
+    val lastVod: Long = 0,
     /** Guide URL(s) the M3U advertised (url-tvg). */
     val advertisedEpg: String = "",
     val account: String = "",
@@ -102,6 +104,8 @@ data class Prefs(
     val scoreStyle: String = "rows",
     /** Pinned games as "gameId@startMillis" (old ones are dropped automatically). */
     val pinnedGames: List<String> = emptyList(),
+    /** Movies & series update: daily (overnight), 3days, weekly or manual. */
+    val vodSchedule: String = "daily",
     /** Sports center "For you" layout: spotlight (big featured game), rows (featured row, no banner) or list (compact list). */
     val sportsLayout: String = "rows",
     // ---- Your teams ----

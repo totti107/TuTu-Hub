@@ -42,7 +42,11 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         val id = p.id.ifBlank { "p" + UUID.randomUUID().toString().take(6) }
         c.settings.updatePlaylists { l -> if (l.any { it.id == id }) l.map { if (it.id == id) p.copy(id = id, lastRefresh = 0) else it } else l + p.copy(id = id) }
         c.iptv.refreshAll(onlyId = id)
+        // A new or changed playlist: load its movies & series too (in the background).
+        if (c.settings.current().playlist(id)?.let { c.iptv.libraryDue(it) } == true) com.arena.tv.data.LibraryUpdates.start(c.appContext, id)
     }
+    val library = c.iptv.library
+    fun updateLibrary() { com.arena.tv.data.LibraryUpdates.start(c.appContext) }
     fun removePlaylist(id: String) = viewModelScope.launch { c.iptv.removePlaylist(id) }
     fun setEnabled(id: String, on: Boolean) = viewModelScope.launch {
         c.settings.updatePlaylist(id) { it.copy(enabled = on) }

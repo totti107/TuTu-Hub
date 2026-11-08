@@ -93,6 +93,10 @@ interface VodDao {
     @Query("UPDATE vod SET adult = (categoryId IN (:ids))") suspend fun markAdultTitles(ids: List<String>)
     @Query("SELECT COUNT(*) FROM vod WHERE playlistId = :pid AND kind = :kind") fun countFor(pid: String, kind: Int): Int
     @Query("DELETE FROM episodes") suspend fun clearEpisodes()
+    @Query("SELECT `key` FROM vod WHERE playlistId = :pid AND kind = :kind") fun keysForBlocking(pid: String, kind: Int): List<String>
+    @Query("DELETE FROM vod WHERE `key` IN (:keys)") fun deleteKeysBlocking(keys: List<String>)
+    @Query("SELECT `key` FROM vod_categories WHERE playlistId = :pid AND kind = :kind") fun categoryKeysBlocking(pid: String, kind: Int): List<String>
+    @Query("DELETE FROM vod_categories WHERE `key` IN (:keys)") fun deleteCategoryKeysBlocking(keys: List<String>)
 
     @Query("SELECT COUNT(*) FROM vod WHERE kind = :kind AND visible = 1 AND adult = 0") fun count(kind: Int): Flow<Int>
     @Query("""SELECT c.`key`, c.id, c.name, COUNT(v.`key`) AS count, c.adult FROM vod_categories c

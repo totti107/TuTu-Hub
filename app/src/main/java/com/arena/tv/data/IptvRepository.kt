@@ -79,7 +79,7 @@ class IptvRepository(
         db.channels().clearOthers(keep); db.vod().clearOthers(keep); db.vod().clearOtherCategories(keep)
         val targets = s.playlists.filter { it.enabled && it.valid && (onlyId == null || it.id == onlyId) }
         if (targets.isEmpty()) throw IOException("Add a playlist in Settings first")
-        _state.update { it.copy(steps = listOf(LoadStep("Sports center"), LoadStep("Live TV"), LoadStep("Movies"), LoadStep("Series"))) }
+        _state.update { it.copy(steps = listOf(LoadStep("Sports center"), LoadStep("Live TV"))) }
 
         // ---- 1. Sports center: channels, then the sports part of the guide ----
         step(0, StepStatus.RUNNING, "Channels")
@@ -110,33 +110,83 @@ class IptvRepository(
             step(1, StepStatus.FAILED)
         } finally { guide.cleanup() }
 
-        // ---- 3. Movies, 4. Series ----
-        for ((stepIndex, kind) in listOf(2 to VodKind.MOVIE, 3 to VodKind.SERIES)) {
-            val wanted = targets.filter { p -> p.type != SourceType.MAC && (if (kind == VodKind.MOVIE) p.loadMovies else p.loadSeries) }
-            targets.filter { it !in wanted }.forEach { vod.clearKind(it.id, kind) }
-            if (wanted.isEmpty()) { step(stepIndex, StepStatus.SKIPPED, "Off"); continue }
-            step(stepIndex, StepStatus.RUNNING)
-            var total = 0
-            for (p in wanted) {
+        // Movies & series have their own schedule (see refreshLibrary). M3U playlists list them in the same file,
+        // so they're saved now when they're due, without a second download.
+        for (p in targets.filter { it.type == SourceType.M3U }) {
+            val pl = settings.current().playlist(p.id) ?: continue
+            if (!libraryDue(pl)) continue
+            val (mv, ep) = m3uVod[p.id] ?: continue
+            try {
+                if (!pl.loadMovies && !pl.loadSeries) { vod.clearKind(p.id, VodKind.MOVIE); vod.clearKind(p.id, VodKind.SERIES); continue }
+                progress("${p.name}: saving movies & series…")
+                val (m, sr) = vod.importM3u(p.id, if (pl.loadMovies) mv else emptyList(), if (pl.loadSeries) ep else emptyList())
+                settings.updatePlaylist(p.id) { it.copy(movieCount = m, seriesCount = sr, lastVod = System.currentTimeMillis()) }
+            } catch (ex: Exception) { softError = listOfNotNull(softError, "${p.name} movies: ${ex.message ?: "failed"}").joinToString("\n") }
+        }
+        applyVisibility()
+        if (errors.isNotEmpty()) softError = (listOfNotNull(softError) + errors).joinToString("\n")
+    }
+
+    // ---------------- Movies & series (their own schedule) ----------------
+
+    data class LibraryState(val running: Boolean = false, val message: String? = null, val error: String? = null)
+    private val _library = MutableStateFlow(LibraryState())
+    val library: StateFlow<LibraryState> = _library.asStateFlow()
+    private val libLock = Mutex()
+
+    private suspend fun scheduleDays(): Int = when (settings.current().prefs.vodSchedule) {
+        "3days" -> 3; "weekly" -> 7; "manual" -> Int.MAX_VALUE; else -> 1
+    }
+
+    /** True when this playlist's movies & series should be updated (by the schedule, or never loaded yet). */
+    suspend fun libraryDue(p: Playlist): Boolean {
+        if (!p.enabled || !p.valid || p.type == SourceType.MAC) return false
+        if (!p.loadMovies && !p.loadSeries) return p.movieCount + p.seriesCount > 0   // switched off: clear once
+        if (p.lastVod == 0L) return true
+        val days = scheduleDays()
+        if (days == Int.MAX_VALUE) return false
+        return System.currentTimeMillis() - p.lastVod > days * 24 * 3600_000L - 3 * 3600_000L
+    }
+    suspend fun anyLibraryDue(): Boolean = settings.current().playlists.any { libraryDue(it) }
+
+    /** Updates movies & series. [onlyDue] = only playlists whose schedule says so (overnight / app start). */
+    suspend fun refreshLibrary(onlyId: String? = null, onlyDue: Boolean = false) {
+        if (libLock.isLocked) return
+        libLock.withLock {
+            withContext(Dispatchers.IO) {
+                val errors = ArrayList<String>()
                 try {
-                    val n = if (p.type == SourceType.XTREAM) vod.importXtream(p, kind) { progress("${p.name}: ${it.replaceFirstChar { c -> c.lowercase() }}") }
-                    else {
-                        // M3U lists movies and episodes together; both are saved in the Movies step.
-                        if (kind == VodKind.SERIES) continue
-                        val (mv, ep) = m3uVod[p.id] ?: continue
-                        progress("${p.name}: saving movies & series…")
-                        vod.importM3u(p.id, if (p.loadMovies) mv else emptyList(), if (p.loadSeries) ep else emptyList()).first
+                    val s = settings.current()
+                    val targets = s.playlists.filter { it.enabled && it.valid && it.type != SourceType.MAC && (onlyId == null || it.id == onlyId) }
+                        .filter { !onlyDue || libraryDue(it) }
+                    for (p in targets) {
+                        fun msg(t: String) = _library.update { it.copy(running = true, message = "${p.name}: $t", error = null) }
+                        msg("updating…")
+                        try {
+                            if (!p.loadMovies) vod.clearKind(p.id, VodKind.MOVIE)
+                            if (!p.loadSeries) vod.clearKind(p.id, VodKind.SERIES)
+                            var movies = if (p.loadMovies) p.movieCount else 0
+                            var series = if (p.loadSeries) p.seriesCount else 0
+                            if (p.type == SourceType.XTREAM) {
+                                if (p.loadMovies) movies = vod.importXtream(p, VodKind.MOVIE) { msg(it.replaceFirstChar { c -> c.lowercase() }) }
+                                if (p.loadSeries) series = vod.importXtream(p, VodKind.SERIES) { msg(it.replaceFirstChar { c -> c.lowercase() }) }
+                            } else if (p.loadMovies || p.loadSeries) {
+                                msg("downloading playlist…")
+                                val (stream, close) = open(p.m3uUrl, p.ua)
+                                val pl = try { M3uParser.parse(stream.bufferedReader(), liveOnly = false) } finally { close() }
+                                msg("saving movies & series…")
+                                val (m, sr) = vod.importM3u(p.id, if (p.loadMovies) pl.movies else emptyList(), if (p.loadSeries) pl.episodes else emptyList())
+                                movies = m; series = sr
+                            }
+                            settings.updatePlaylist(p.id) { it.copy(movieCount = movies, seriesCount = series, lastVod = System.currentTimeMillis()) }
+                        } catch (e: Exception) { errors += "${p.name}: ${e.message ?: e.javaClass.simpleName}" }
                     }
-                    total += n
-                    settings.updatePlaylist(p.id) { if (kind == VodKind.MOVIE) it.copy(movieCount = n) else it.copy(seriesCount = n) }
-                } catch (e: Exception) {
-                    softError = listOfNotNull(softError, "${p.name} ${if (kind == VodKind.MOVIE) "movies" else "series"}: ${e.message ?: "failed"}").joinToString("\n")
+                    applyVisibility()
+                } finally {
+                    _library.value = LibraryState(running = false, error = errors.takeIf { it.isNotEmpty() }?.joinToString("\n"))
                 }
             }
-            applyVisibility()
-            step(stepIndex, StepStatus.DONE, "%,d".format(total)); bump()
         }
-        if (errors.isNotEmpty()) softError = (listOfNotNull(softError) + errors).joinToString("\n")
     }
 
     /** Guide only (both guide steps). */

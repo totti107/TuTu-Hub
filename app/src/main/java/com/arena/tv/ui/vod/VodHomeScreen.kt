@@ -103,7 +103,7 @@ fun VodHomeScreen(kind: Int, onOpen: (String) -> Unit, onOpenSettings: () -> Uni
     val tab by vm.tab.collectAsStateWithLifecycle()
     val total by vm.total.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
-    val refresh by vm.refresh.collectAsStateWithLifecycle()
+    val refresh by vm.library.collectAsStateWithLifecycle()
     val year by vm.year.collectAsStateWithLifecycle()
     val sort by vm.sort.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
@@ -133,7 +133,7 @@ fun VodHomeScreen(kind: Int, onOpen: (String) -> Unit, onOpenSettings: () -> Uni
                 EmptyState("${noun.replaceFirstChar { it.uppercase() }} are turned off", "Turn them on in Settings → Edit playlist. They load after Sports and Live TV.",
                     action = "Open settings", onAction = onOpenSettings)
             total == 0 -> EmptyState(if (refresh.running) "Loading $noun…" else "No $noun",
-                refresh.message ?: "Your provider didn't list any $noun. Try \"Reload all\" in Settings.",
+                refresh.message ?: "Your provider didn't list any $noun. Try \"Update movies & series\" in Settings → Playlists.",
                 action = if (refresh.running) null else "Reload", onAction = { vm.refreshAll() })
             tab == 0 -> Spotlight(vm, onOpen)
             else -> Library(vm, onOpen)

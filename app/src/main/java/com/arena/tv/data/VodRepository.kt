@@ -72,10 +72,11 @@ class VodRepository(private val http: OkHttpClient, private val db: ArenaDb, pri
                 VodCategoryEntity("$pid:${prefix(kind)}c:$id", kind, "$pid:$id", o.s("category_name") ?: "Other", i, pid)
             }
             val dao = db.vod()
-            db.runInTransaction {
-                dao.clearKindBlocking(pid, kind); dao.clearCategoriesBlocking(pid, kind)
-                dao.insertCategoriesBlocking(catEntities)
-            }
+            // The library stays usable while it updates: titles are replaced in place and only the ones
+            // that disappeared are removed at the end. Adult titles stay hidden until visibility is applied.
+            val adultCats = catEntities.filter { Adult.isAdult(it.name) }.map { it.id }.toSet()
+            dao.insertCategoriesBlocking(catEntities.map { it.copy(adult = it.id in adultCats, visible = it.id !in adultCats) })
+            val seen = HashSet<String>()
             var n = 0
             val batch = ArrayList<VodEntity>(1000)
             http.newCall(request("$api&action=$listAction", ua)).execute().use { r ->
@@ -86,7 +87,10 @@ class VodRepository(private val http: OkHttpClient, private val db: ArenaDb, pri
                     reader.beginArray()
                     while (reader.hasNext()) {
                         val m = readObject(reader)
-                        toEntity(pid, kind, m, n)?.let { batch += it; n++ }
+                        toEntity(pid, kind, m, n)?.let { e ->
+                            val a = e.categoryId in adultCats
+                            batch += e.copy(adult = a, visible = !a); seen += e.key; n++
+                        }
                         if (batch.size >= 1000) {
                             dao.insertBlocking(batch); batch.clear()
                             progress("Loading $label… ${n / 1000}k")
@@ -96,6 +100,12 @@ class VodRepository(private val http: OkHttpClient, private val db: ArenaDb, pri
                 }
             }
             if (batch.isNotEmpty()) dao.insertBlocking(batch)
+            // Only now remove titles and categories the provider dropped.
+            if (n > 0) {
+                dao.keysForBlocking(pid, kind).filter { it !in seen }.chunked(500).forEach(dao::deleteKeysBlocking)
+                val catKeys = catEntities.map { it.key }.toSet()
+                dao.categoryKeysBlocking(pid, kind).filter { it !in catKeys }.chunked(500).forEach(dao::deleteCategoryKeysBlocking)
+            }
             counts[kind] = n
         }
         return counts[0] to counts[1]
