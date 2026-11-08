@@ -79,6 +79,7 @@ fun SportsHubScreen(onOpenGame: (Game) -> Unit, onOpenSettings: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val favTeams by vm.favoriteTeams.collectAsStateWithLifecycle()
     val settings by vm.hasSource.collectAsStateWithLifecycle()
+    val layout by vm.layout.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle, state.day) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { vm.poll() } }
 
@@ -128,6 +129,7 @@ fun SportsHubScreen(onOpenGame: (Game) -> Unit, onOpenSettings: () -> Unit) {
                 DropChip(state.country ?: if (compactChrome) "Countries" else "All countries", listOf<Pair<String?, String>>(null to "All countries") + countries.map { it to it },
                     state.country, vm::setCountry)
                 SportsGuideButton()
+                if (state.tab == 0) SportsLayoutButton(layout) { vm.setLayout(it) }
                 IconAction(Icons.Rounded.Refresh, "Refresh", onClick = vm::manualRefresh)
             },
         )
@@ -148,7 +150,8 @@ fun SportsHubScreen(onOpenGame: (Game) -> Unit, onOpenSettings: () -> Unit) {
                 icon = Icons.Rounded.SportsSoccer,
                 action = "Retry", onAction = vm::manualRefresh,
             )
-            state.tab == 0 -> ForYou(visible, favKeys, state.channelCounts, onOpenGame)
+            state.tab == 0 && layout == "list" -> GameList(visible, favKeys, state, onOpenGame)
+            state.tab == 0 -> ForYou(visible, favKeys, state.channelCounts, onOpenGame, spotlight = layout == "spotlight")
             state.tab == 1 -> GameList(visible, favKeys, state, onOpenGame)
             else -> GameList(following, favKeys, state, onOpenGame)
         }

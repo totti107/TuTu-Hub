@@ -240,6 +240,12 @@ fun LazyListScope.sportsWatchItems(p: Prefs, set: ((Prefs) -> Prefs) -> Unit, as
         }
     }
     item {
+        SetCard("Sports center") {
+            ChoiceRow("\"For you\" layout", "Also changeable with the layout button in the Sports center.",
+                listOf("spotlight" to "Spotlight · big featured game", "rows" to "Rows · cards only", "list" to "List · compact"), p.sportsLayout) { v -> set { it.copy(sportsLayout = v) } }
+        }
+    }
+    item {
         SetCard("Your teams") {
             SwitchRow("Remind me before their matches", "10 minutes before they play, with the channel that shows it.", p.remindTeams) { v ->
                 set { it.copy(remindTeams = v) }; if (v) askNotifications()

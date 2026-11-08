@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -54,6 +55,9 @@ class SportsHubViewModel(private val c: AppContainer) : ViewModel() {
     fun setSport(s: Sport?) = _state.update { it.copy(sport = s) }
     fun toggleLiveOnly() = _state.update { it.copy(liveOnly = !it.liveOnly) }
     fun setTab(t: Int) = _state.update { it.copy(tab = t) }
+    /** For you layout: spotlight, rows or list (Settings → Sports, or the layout button). */
+    val layout = c.settings.flow.map { it.prefs.sportsLayout }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, c.prefs.value.sportsLayout)
+    fun setLayout(l: String) = viewModelScope.launch { c.settings.updatePrefs { it.copy(sportsLayout = l) } }
     fun setMine(m: Boolean) = _state.update { it.copy(mine = m) }
     fun setCountry(c: String?) = _state.update { it.copy(country = c) }
     fun setQuery(q: String) = _state.update { it.copy(query = q) }

@@ -4,6 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -72,14 +76,15 @@ fun featured(games: List<Game>, favKeys: Set<String>, counts: Map<String, Int>):
 }
 
 @Composable
-fun ForYou(games: List<Game>, favKeys: Set<String>, counts: Map<String, Int>, onOpen: (Game) -> Unit) {
+fun ForYou(games: List<Game>, favKeys: Set<String>, counts: Map<String, Int>, onOpen: (Game) -> Unit, spotlight: Boolean = true) {
     val wide = LocalWide.current
     val hero = featured(games, favKeys, counts)
     val live = games.filter { it.isLive }
     val upcoming = games.filter { it.state == GameState.PRE }.sortedBy { it.startMillis }
     val finished = games.filter { it.state == GameState.POST }.sortedByDescending { it.startMillis }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-        if (hero.isNotEmpty()) item { HeroCarousel(hero, counts, onOpen) }
+        // "Spotlight" layout: the big banner. "Rows": the same featured games as a normal row of cards.
+        if (hero.isNotEmpty()) item { if (spotlight) HeroCarousel(hero, counts, onOpen) else CardRow("Featured", hero, counts, onOpen) }
         if (live.isNotEmpty()) item { CardRow("Live", live, counts, onOpen) }
         if (upcoming.isNotEmpty()) item { CardRow("Upcoming", upcoming, counts, onOpen) }
         if (finished.isNotEmpty()) item { CardRow("Finished", finished, counts, onOpen) }
@@ -236,5 +241,20 @@ private fun CardTeam(t: Team, g: Game) {
             color = if (dim) ArenaColors.Muted else ArenaColors.Text, fontWeight = FontWeight.Medium)
         if (g.state != GameState.PRE) Text(t.score ?: "-", fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
             color = if (dim) ArenaColors.Muted else ArenaColors.Text)
+    }
+}
+
+/** The Sports center's layout choice: a small button in the top bar. */
+@Composable
+fun SportsLayoutButton(current: String, onPick: (String) -> Unit) {
+    var open by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Box {
+        com.arena.tv.ui.components.IconAction(androidx.compose.material.icons.Icons.Rounded.Dashboard, "Layout") { open = true }
+        androidx.compose.material3.DropdownMenu(open, { open = false }, containerColor = ArenaColors.Surface) {
+            listOf("spotlight" to "Spotlight · big featured game", "rows" to "Rows · cards only", "list" to "List · compact").forEach { (v, label) ->
+                androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = { onPick(v); open = false },
+                    trailingIcon = if (v == current) ({ androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Rounded.Check, null, tint = ArenaColors.Accent) }) else null)
+            }
+        }
     }
 }

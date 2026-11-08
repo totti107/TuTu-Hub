@@ -102,6 +102,8 @@ data class Prefs(
     val scoreStyle: String = "rows",
     /** Pinned games as "gameId@startMillis" (old ones are dropped automatically). */
     val pinnedGames: List<String> = emptyList(),
+    /** Sports center "For you" layout: spotlight (big featured game), rows (featured row, no banner) or list (compact list). */
+    val sportsLayout: String = "rows",
     // ---- Your teams ----
     /** A reminder 10 minutes before your teams play. */
     val remindTeams: Boolean = true,
