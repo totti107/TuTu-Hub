@@ -23,8 +23,16 @@ class SportsApi(private val http: OkHttpClient) {
 
     /** @param date yyyyMMdd in the user's local day, or null for ESPN's "current" day. */
     suspend fun scoreboard(league: League, date: String?): List<Game> = withContext(Dispatchers.IO) {
-        val url = "$base/${league.key}/scoreboard" + (date?.let { "?dates=$it" } ?: "")
-        EspnParser.parseScoreboard(get(url), league)
+        when (league.sport) {
+            // One feed with every current cricket series (dates don't apply).
+            Sport.CRICKET -> EspnParser.parseCricketPanel(get("$base/cricket/scorepanel"), league)
+            Sport.WRESTLING -> WrestlingSchedule.games(league, date?.let {
+                runCatching { java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).parse(it)!!.time + 12 * 3600_000L }.getOrNull() } ?: System.currentTimeMillis())
+            else -> {
+                val url = "$base/${league.key}/scoreboard" + (date?.let { "?dates=$it" } ?: "")
+                EspnParser.parseScoreboard(get(url), league)
+            }
+        }
     }
 
     /** Fetches many leagues in parallel. Failed leagues are skipped; returns (games, failures). */
@@ -48,6 +56,7 @@ class SportsApi(private val http: OkHttpClient) {
     }
 
     suspend fun details(game: Game): GameDetails = withContext(Dispatchers.IO) {
-        EspnParser.parseSummary(get("$base/${game.league.key}/summary?event=${game.id}"), game.home.id)
+        if (game.league.sport == Sport.WRESTLING) return@withContext GameDetails(emptyList(), emptyList(), game.broadcasts)
+        EspnParser.parseSummary(get("$base/${game.apiLeague ?: game.league.key}/summary?event=${game.id}"), game.home.id)
     }
 }

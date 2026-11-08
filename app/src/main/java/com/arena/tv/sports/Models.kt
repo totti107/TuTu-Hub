@@ -12,6 +12,8 @@ enum class Sport(val label: String, val espn: String, val emoji: String) {
     RACING("Motorsport", "racing", "🏎"),
     RUGBY("Rugby", "rugby", "🏉"),
     AUSSIE("Aussie Rules", "australian-football", "🏉"),
+    CRICKET("Cricket", "cricket", "🏏"),
+    WRESTLING("Wrestling", "wrestling", "🤼"),
 }
 
 enum class Region(val label: String) {
@@ -82,6 +84,8 @@ data class Game(
     /** Multi-day events (golf tournaments) end later than they start. */
     val endMillis: Long = startMillis,
     val odds: Odds? = null,
+    /** ESPN league path for match details when it differs from the league's (cricket: the series). */
+    val apiLeague: String? = null,
 ) {
     val isLive get() = state == GameState.LIVE
     /** Headline for lists: "Home v Away" or the event name. */

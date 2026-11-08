@@ -49,6 +49,37 @@ object EspnParser {
         }.map { it.copy(leagueLogo = logo) }
     }
 
+    /**
+     * Cricket: ESPN's score panel lists every series it follows. Each match keeps its series name as the note,
+     * the short score ("245/6", overs and targets go in the detail) and the result line ("India won by 5 wkts").
+     */
+    fun parseCricketPanel(body: String, league: League): List<Game> {
+        val root = json.parseToJsonElement(body)
+        return root["scores"].arr.flatMap { sc ->
+            val series = sc["leagues"][0]
+            val seriesName = series["name"].str
+            val seriesId = series["id"].str
+            val logo = series["logos"][0]["href"].str
+            sc["events"].arr.mapNotNull { e ->
+                runCatching {
+                    val g = parseEvent(e, league) ?: return@runCatching null
+                    val comp = e["competitions"][0]
+                    val summary = e["status"]["summary"].str ?: comp["status"]["summary"].str
+                    val kind = comp["description"].str ?: comp["class"]["eventType"].str
+                    fun short(t: Team) = t.copy(score = t.score?.substringBefore(" (")?.trim()?.ifEmpty { null })
+                    g.copy(
+                        home = short(g.home), away = short(g.away),
+                        note = listOfNotNull(seriesName, kind).joinToString(" · "),
+                        statusText = when (g.state) { GameState.LIVE -> "Live"; GameState.POST -> "Result"; else -> g.statusText },
+                        statusDetail = summary ?: g.statusDetail,
+                        leagueLogo = logo, apiLeague = seriesId?.let { "cricket/$it" },
+                        endMillis = parseDate(e["endDate"].str).takeIf { it > 0 } ?: g.startMillis,
+                    )
+                }.getOrNull()
+            }
+        }
+    }
+
     private fun stateOf(type: JsonElement?) = when (type["state"].str) {
         "in" -> GameState.LIVE
         "post" -> GameState.POST
@@ -398,4 +429,42 @@ object EspnParser {
 
     private fun prettyLabel(l: String): String =
         if (l.length > 3 && l == l.uppercase()) l.lowercase().replaceFirstChar { it.uppercase() } else l
+}
+
+/**
+ * Wrestling has no live scores (it's scripted), so the weekly TV shows are listed from their usual US schedule
+ * (Eastern time). Channels are found from the TV guide by the show's name.
+ */
+object WrestlingSchedule {
+    private data class Show(val league: String, val title: String, val day: Int, val hour: Int, val hours: Int, val tv: String)
+    private val shows = listOf(
+        Show("wwe", "WWE Raw", java.util.Calendar.MONDAY, 20, 3, "Netflix"),
+        Show("wwe", "WWE NXT", java.util.Calendar.TUESDAY, 20, 2, "The CW"),
+        Show("wwe", "WWE SmackDown", java.util.Calendar.FRIDAY, 20, 2, "USA Network"),
+        Show("aew", "AEW Dynamite", java.util.Calendar.WEDNESDAY, 20, 2, "TBS"),
+        Show("aew", "AEW Collision", java.util.Calendar.SATURDAY, 20, 2, "TNT"),
+    )
+
+    /** Shows within a day either side of [around]. */
+    fun games(league: League, around: Long = System.currentTimeMillis()): List<Game> {
+        val et = java.util.TimeZone.getTimeZone("America/New_York")
+        val now = System.currentTimeMillis()
+        return (-2..2).flatMap { off ->
+            val cal = java.util.Calendar.getInstance(et).apply { timeInMillis = around; add(java.util.Calendar.DAY_OF_YEAR, off) }
+            shows.filter { it.league == league.espnId && it.day == cal.get(java.util.Calendar.DAY_OF_WEEK) }.map { s ->
+                cal.set(java.util.Calendar.HOUR_OF_DAY, s.hour); cal.set(java.util.Calendar.MINUTE, 0); cal.set(java.util.Calendar.SECOND, 0); cal.set(java.util.Calendar.MILLISECOND, 0)
+                val start = cal.timeInMillis
+                val end = start + s.hours * 3600_000L
+                val state = when { now >= end -> GameState.POST; now >= start -> GameState.LIVE; else -> GameState.PRE }
+                val day = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).apply { timeZone = et }.format(java.util.Date(start))
+                val show = Team("", s.title, s.title, league.shortName, s.title, "", null, null, null, false)
+                Game(
+                    id = "${league.espnId}-${s.title.lowercase().replace(' ', '-')}-$day", league = league, startMillis = start,
+                    state = state, statusText = when (state) { GameState.LIVE -> "On now"; GameState.POST -> "Ended"; else -> "" },
+                    statusDetail = "Usually on ${s.tv} (US)", period = 0, home = show, away = show, broadcasts = listOf(s.tv),
+                    venue = null, note = "Weekly show", title = s.title, headToHead = false, endMillis = end,
+                )
+            }
+        }
+    }
 }

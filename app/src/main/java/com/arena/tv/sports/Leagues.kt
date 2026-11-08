@@ -106,6 +106,17 @@ object Leagues {
         League(RUGBY, "164205", "Rugby World Cup", "RWC", listOf("rugby world cup"), mapOf(UK to listOf("ITV"), FR to listOf("TF1"))),
 
         League(AUSSIE, "afl", "AFL", "AFL", listOf("afl", "australian football"), mapOf(AU to listOf("Fox Footy", "Seven", "Kayo"))),
+
+        // Every cricket series ESPN is following right now (Tests, ODIs, T20 leagues).
+        League(CRICKET, "all", "Cricket", "CRIC", listOf("cricket", "test match", "odi", "t20", "t20i", "ipl", "big bash", "psl", "the hundred"),
+            mapOf(UK to listOf("Sky Sports Cricket", "TNT Sports"), US to listOf("Willow", "ESPN+"), CA to listOf("Willow", "Hotstar"),
+                MENA to listOf("OSN Sports Cricket", "CricLife"), AU to listOf("Fox Cricket", "Kayo", "Channel 9"), LATAM to listOf("ESPN"))),
+
+        // Weekly shows (no live scores: wrestling is scripted).
+        League(WRESTLING, "wwe", "WWE", "WWE", listOf("wwe", "wwe raw", "monday night raw", "smackdown", "wwe smackdown", "nxt", "wwe nxt"),
+            mapOf(US to listOf("Netflix", "USA Network", "The CW"), UK to listOf("Netflix"), CA to listOf("Netflix"), MENA to listOf("Netflix", "Shahid"))),
+        League(WRESTLING, "aew", "AEW", "AEW", listOf("aew", "aew dynamite", "dynamite", "aew collision", "collision"),
+            mapOf(US to listOf("TBS", "TNT", "Max"), UK to listOf("ITV4"), CA to listOf("Sportsnet 360"))),
     )
 
     /** Country / region a league belongs to, for the "All countries" filter. */
@@ -117,7 +128,7 @@ object Leagues {
             Sport.SOCCER -> "Other"
             Sport.RUGBY -> if (l.espnId == "267979") "England" else "International"
             Sport.AUSSIE -> "Australia"
-            Sport.MMA, Sport.TENNIS, Sport.GOLF, Sport.RACING -> "International"
+            Sport.MMA, Sport.TENNIS, Sport.GOLF, Sport.RACING, Sport.CRICKET -> "International"
             else -> "USA"
         }
     }

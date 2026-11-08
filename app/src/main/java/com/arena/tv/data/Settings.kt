@@ -214,6 +214,8 @@ class SettingsStore(private val context: Context) {
         val pin = stringPreferencesKey("parental_pin")
         val hideAdult = stringPreferencesKey("hide_adult")
         val prefs = stringPreferencesKey("prefs")
+        val leaguesV2 = stringPreferencesKey("leagues_v2")
+        val sportsV2 = stringPreferencesKey("sports_v2")
     }
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -240,8 +242,10 @@ class SettingsStore(private val context: Context) {
             activePlaylist = p[K.active] ?: "",
             hiddenGroups = p[K.hidden] ?: emptySet(),
             regions = p[K.regions]?.mapNotNull { runCatching { Region.valueOf(it) }.getOrNull() }?.toSet() ?: emptySet(),
-            enabledLeagues = p[K.leagues] ?: Leagues.defaultEnabledKeys,
-            followedSports = p[K.sports] ?: emptySet(),
+            // Leagues added in 3.11 (cricket, WWE, AEW) start switched on, also for people who already picked leagues.
+            enabledLeagues = p[K.leagues]?.let { if (p[K.leaguesV2] == null) it + setOf("cricket/all", "wrestling/wwe", "wrestling/aew") else it }
+                ?: Leagues.defaultEnabledKeys,
+            followedSports = (p[K.sports] ?: emptySet()).let { if (it.isNotEmpty() && p[K.sportsV2] == null) it + setOf("cricket", "wrestling") else it },
             decimalOdds = p[K.oddsAmerican] != "american",
             parentalPin = p[K.pin] ?: "",
             hideAdult = p[K.hideAdult] == "1",
@@ -278,10 +282,10 @@ class SettingsStore(private val context: Context) {
     suspend fun setPin(pin: String) = context.dataStore.edit { it[K.pin] = pin }
     suspend fun setHideAdult(hide: Boolean) = context.dataStore.edit { it[K.hideAdult] = if (hide) "1" else "0" }
     suspend fun setDecimalOdds(decimal: Boolean) = context.dataStore.edit { it[K.oddsAmerican] = if (decimal) "decimal" else "american" }
-    suspend fun setFollowedSports(s: Set<String>) = context.dataStore.edit { it[K.sports] = s }
+    suspend fun setFollowedSports(s: Set<String>) = context.dataStore.edit { it[K.sports] = s; it[K.sportsV2] = "1" }
 
     suspend fun setRegions(r: Set<Region>) = context.dataStore.edit { it[K.regions] = r.map { x -> x.name }.toSet() }
-    suspend fun setLeagues(l: Set<String>) = context.dataStore.edit { it[K.leagues] = l }
+    suspend fun setLeagues(l: Set<String>) = context.dataStore.edit { it[K.leagues] = l; it[K.leaguesV2] = "1" }
     suspend fun saveTrakt(t: TraktAuth) = context.dataStore.edit {
         it[K.tId] = t.clientId.trim(); it[K.tSecret] = t.clientSecret.trim(); it[K.tAccess] = t.accessToken
         it[K.tRefresh] = t.refreshToken; it[K.tExpires] = t.expiresAt; it[K.tUser] = t.username
