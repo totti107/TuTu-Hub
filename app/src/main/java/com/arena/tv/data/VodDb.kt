@@ -35,11 +35,13 @@ data class VodEntity(
     val plot: String?,
     val genre: String?,
     val backdrop: String?,
+    /** In an adult category: hidden or PIN-locked like adult channels. */
+    @androidx.room.ColumnInfo(defaultValue = "0") val adult: Boolean = false,
 )
 
 @Entity(tableName = "vod_categories", indices = [Index("kind", "position")])
 data class VodCategoryEntity(@PrimaryKey val key: String, val kind: Int, val id: String, val name: String, val position: Int,
-    val playlistId: String, val visible: Boolean = true)
+    val playlistId: String, val visible: Boolean = true, @androidx.room.ColumnInfo(defaultValue = "0") val adult: Boolean = false)
 
 @Entity(tableName = "episodes", indices = [Index("seriesKey", "season", "number")])
 data class EpisodeEntity(
@@ -73,7 +75,8 @@ data class ProgressEntity(
 @Entity(tableName = "vod_favorites")
 data class VodFavoriteEntity(@PrimaryKey val key: String, val addedAt: Long)
 
-data class CategoryCount(val key: String, val id: String, val name: String, val count: Int)
+data class CategoryCount(val key: String, val id: String, val name: String, val count: Int, val adult: Boolean = false)
+data class CategoryName(val id: String, val name: String)
 
 @Dao
 interface VodDao {
@@ -83,35 +86,38 @@ interface VodDao {
     @Query("DELETE FROM vod_categories WHERE kind = :kind AND playlistId = :pid") fun clearCategoriesBlocking(pid: String, kind: Int)
     @Query("DELETE FROM vod WHERE playlistId NOT IN (:keep)") suspend fun clearOthers(keep: List<String>)
     @Query("DELETE FROM vod_categories WHERE playlistId NOT IN (:keep)") suspend fun clearOtherCategories(keep: List<String>)
-    @Query("UPDATE vod SET visible = (playlistId IN (:active))") suspend fun applyVisibility(active: List<String>)
-    @Query("UPDATE vod_categories SET visible = (playlistId IN (:active))") suspend fun applyCategoryVisibility(active: List<String>)
+    @Query("UPDATE vod SET visible = (playlistId IN (:active)) AND NOT (:hideAdult AND adult = 1)") suspend fun applyVisibility(active: List<String>, hideAdult: Boolean)
+    @Query("UPDATE vod_categories SET visible = (playlistId IN (:active)) AND NOT (:hideAdult AND adult = 1)") suspend fun applyCategoryVisibility(active: List<String>, hideAdult: Boolean)
+    @Query("SELECT id, name FROM vod_categories") suspend fun categoryNames(): List<CategoryName>
+    @Query("UPDATE vod_categories SET adult = (id IN (:ids))") suspend fun markAdultCategories(ids: List<String>)
+    @Query("UPDATE vod SET adult = (categoryId IN (:ids))") suspend fun markAdultTitles(ids: List<String>)
     @Query("SELECT COUNT(*) FROM vod WHERE playlistId = :pid AND kind = :kind") fun countFor(pid: String, kind: Int): Int
     @Query("DELETE FROM episodes") suspend fun clearEpisodes()
 
-    @Query("SELECT COUNT(*) FROM vod WHERE kind = :kind AND visible = 1") fun count(kind: Int): Flow<Int>
-    @Query("""SELECT c.`key`, c.id, c.name, COUNT(v.`key`) AS count FROM vod_categories c
+    @Query("SELECT COUNT(*) FROM vod WHERE kind = :kind AND visible = 1 AND adult = 0") fun count(kind: Int): Flow<Int>
+    @Query("""SELECT c.`key`, c.id, c.name, COUNT(v.`key`) AS count, c.adult FROM vod_categories c
               LEFT JOIN vod v ON v.kind = c.kind AND v.categoryId = c.id
               WHERE c.kind = :kind AND c.visible = 1 GROUP BY c.`key` HAVING count > 0 ORDER BY c.position""")
     fun categories(kind: Int): Flow<List<CategoryCount>>
-    @Query("""SELECT c.`key`, c.id, c.name, COUNT(v.`key`) AS count FROM vod_categories c
+    @Query("""SELECT c.`key`, c.id, c.name, COUNT(v.`key`) AS count, c.adult FROM vod_categories c
               LEFT JOIN vod v ON v.kind = c.kind AND v.categoryId = c.id
               WHERE c.kind = :kind AND c.visible = 1 GROUP BY c.`key` HAVING count > 0 ORDER BY c.position""")
     suspend fun categoriesOnce(kind: Int): List<CategoryCount>
 
-    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND (:cat IS NULL OR categoryId = :cat) AND (:minYear IS NULL OR year >= :minYear) AND (:maxYear IS NULL OR year <= :maxYear) ORDER BY position LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND ((:cat IS NULL AND adult = 0) OR categoryId = :cat) AND (:minYear IS NULL OR year >= :minYear) AND (:maxYear IS NULL OR year <= :maxYear) ORDER BY position LIMIT :limit OFFSET :offset")
     suspend fun page(kind: Int, cat: String?, minYear: Int?, maxYear: Int?, limit: Int, offset: Int): List<VodEntity>
-    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND (:cat IS NULL OR categoryId = :cat) AND (:minYear IS NULL OR year >= :minYear) AND (:maxYear IS NULL OR year <= :maxYear) ORDER BY added DESC LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND ((:cat IS NULL AND adult = 0) OR categoryId = :cat) AND (:minYear IS NULL OR year >= :minYear) AND (:maxYear IS NULL OR year <= :maxYear) ORDER BY added DESC LIMIT :limit OFFSET :offset")
     suspend fun pageNewest(kind: Int, cat: String?, minYear: Int?, maxYear: Int?, limit: Int, offset: Int): List<VodEntity>
-    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND (:cat IS NULL OR categoryId = :cat) AND (:minYear IS NULL OR year >= :minYear) AND (:maxYear IS NULL OR year <= :maxYear) ORDER BY rating IS NULL, rating DESC LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND ((:cat IS NULL AND adult = 0) OR categoryId = :cat) AND (:minYear IS NULL OR year >= :minYear) AND (:maxYear IS NULL OR year <= :maxYear) ORDER BY rating IS NULL, rating DESC LIMIT :limit OFFSET :offset")
     suspend fun pageTopRated(kind: Int, cat: String?, minYear: Int?, maxYear: Int?, limit: Int, offset: Int): List<VodEntity>
-    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND (:cat IS NULL OR categoryId = :cat) AND (:minYear IS NULL OR year >= :minYear) AND (:maxYear IS NULL OR year <= :maxYear) ORDER BY name COLLATE NOCASE LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND ((:cat IS NULL AND adult = 0) OR categoryId = :cat) AND (:minYear IS NULL OR year >= :minYear) AND (:maxYear IS NULL OR year <= :maxYear) ORDER BY name COLLATE NOCASE LIMIT :limit OFFSET :offset")
     suspend fun pageAz(kind: Int, cat: String?, minYear: Int?, maxYear: Int?, limit: Int, offset: Int): List<VodEntity>
 
-    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND name LIKE '%' || :q || '%' ORDER BY position LIMIT 200")
+    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND adult = 0 AND name LIKE '%' || :q || '%' ORDER BY position LIMIT 200")
     suspend fun search(kind: Int, q: String): List<VodEntity>
-    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 ORDER BY added DESC LIMIT :n") suspend fun newest(kind: Int, n: Int): List<VodEntity>
+    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND adult = 0 ORDER BY added DESC LIMIT :n") suspend fun newest(kind: Int, n: Int): List<VodEntity>
     @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND categoryId = :cat ORDER BY added DESC LIMIT :n") suspend fun newestIn(kind: Int, cat: String, n: Int): List<VodEntity>
-    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND poster IS NOT NULL AND rating >= 7 AND added > :since ORDER BY added DESC LIMIT :n")
+    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND adult = 0 AND poster IS NOT NULL AND rating >= 7 AND added > :since ORDER BY added DESC LIMIT :n")
     suspend fun spotlightCandidates(kind: Int, since: Long, n: Int): List<VodEntity>
     @Query("SELECT * FROM vod WHERE `key` = :key") suspend fun byKey(key: String): VodEntity?
     @Query("SELECT * FROM vod WHERE `key` IN (:keys)") suspend fun byKeys(keys: List<String>): List<VodEntity>

@@ -115,6 +115,21 @@ data class Prefs(
     val titleCountry: Boolean = false,
     /** Also remove emojis and symbols. */
     val titleEmoji: Boolean = true,
+    // ---- Recording ----
+    /** Folder recordings go to ("" = the app's own storage). */
+    val recFolder: String = "",
+    /** channel_date_title, date_channel_title or title_date */
+    val recPattern: String = "channel_date_title",
+    /** Delete finished recordings after this many days (0 = keep until deleted). */
+    val recKeepDays: Int = 0,
+    val recMax: Int = 1,
+    // ---- Planner ----
+    /** Start scheduled recordings this many minutes early. */
+    val planEarly: Int = 0,
+    /** Keep recording this many minutes after the scheduled end. */
+    val planLate: Int = 0,
+    /** Reminders go off this many minutes before a show starts. */
+    val planRemind: Int = 5,
 )
 
 data class TraktAuth(

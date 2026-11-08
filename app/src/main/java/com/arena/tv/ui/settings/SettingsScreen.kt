@@ -122,6 +122,11 @@ fun SettingsScreen() {
     val askNotifications: () -> Unit = { if (android.os.Build.VERSION.SDK_INT >= 33) runCatching { notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS) } }
     var page by rememberSaveable { mutableStateOf<SettingsPage?>(if (wide) SettingsPage.PLAYLISTS else null) }
     if (wide && page == null) page = SettingsPage.PLAYLISTS
+    val pageRequest = androidx.compose.ui.platform.LocalContext.current.app.settingsPage
+    val requested by pageRequest.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(requested) {
+        requested?.let { r -> SettingsPage.entries.firstOrNull { it.name == r }?.let { page = it }; pageRequest.value = null }
+    }
     androidx.activity.compose.BackHandler(enabled = !wide && page != null) { page = null }
 
     Column(Modifier.fillMaxSize()) {
@@ -277,6 +282,8 @@ fun SettingsScreen() {
             }
             if (pg == SettingsPage.PLAYBACK) { item { SectionHeader("Playback") }; playbackItems(settings.prefs, vm::updatePrefs) }
             if (pg == SettingsPage.BROWSING) { item { SectionHeader("Browsing") }; browsingItems(settings.prefs, vm::updatePrefs) }
+            if (pg == SettingsPage.RECORDING) { item { SectionHeader("Recording") }; recordingItems(settings.prefs, vm::updatePrefs) }
+            if (pg == SettingsPage.PLANNER) { item { SectionHeader("Planner") }; plannerItems(settings.prefs, vm::updatePrefs, askNotifications) }
             if (pg == SettingsPage.TITLES) { item { SectionHeader("Title Optimizer") }; titleItems(settings.prefs) { f -> vm.updateTitles(f) } }
             if (pg == SettingsPage.GUIDE) { item { SectionHeader("TV guide") }; guideItems(vm, settings.playlists, refresh.running) }
             if (pg == SettingsPage.BACKUP) { item { SectionHeader("Backup & restore") }; backupItems(vm) }

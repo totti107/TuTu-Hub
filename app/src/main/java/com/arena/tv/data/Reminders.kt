@@ -138,7 +138,12 @@ class Reminders(private val context: Context) {
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val r = context.app.reminders
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) { r.startDailyCheck(); return }
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            r.startDailyCheck()
+            val pending = goAsync()
+            CoroutineScope(Dispatchers.IO).launch { try { runCatching { context.app.recordings.rearm() } } finally { pending.finish() } }
+            return
+        }
         val pending = goAsync()
         r.handleAsync(intent) { pending.finish() }
     }

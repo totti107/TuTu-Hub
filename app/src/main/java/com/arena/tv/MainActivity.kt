@@ -155,6 +155,8 @@ private fun Graph(nav: NavHostController, openSettings: () -> Unit) {
                 live = { r -> ctx.app.liveRequest.value = r; open(Section.LIVE) },
                 sports = { open(Section.SPORTS) }, movies = { open(Section.MOVIES) }, series = { open(Section.SERIES) },
                 game = { nav.navigate("game/${it.id}") }, vod = { nav.navigate("vod/$it") }, settings = openSettings,
+                recordings = { ctx.app.settingsPage.value = "RECORDING"; openSettings() },
+                planner = { ctx.app.settingsPage.value = "PLANNER"; openSettings() },
             ))
         }
         composable(Section.SPORTS.route) {
@@ -167,7 +169,7 @@ private fun Graph(nav: NavHostController, openSettings: () -> Unit) {
         composable(Section.MOVIES.route) { VodHomeScreen(VodKind.MOVIE, onOpen = { nav.navigate("vod/$it") }, onOpenSettings = openSettings) }
         composable(Section.SERIES.route) { VodHomeScreen(VodKind.SERIES, onOpen = { nav.navigate("vod/$it") }, onOpenSettings = openSettings) }
         composable("vod/{key}", arguments = listOf(navArgument("key") { type = NavType.StringType })) { e ->
-            VodDetailScreen(e.arguments?.getString("key") ?: "", onBack = { nav.popBackStack() })
+            VodDetailScreen(e.arguments?.getString("key") ?: "", onBack = { nav.popBackStack() }, onOpen = { nav.navigate("vod/$it") })
         }
         composable(Section.SETTINGS.route) { SettingsScreen() }
     }

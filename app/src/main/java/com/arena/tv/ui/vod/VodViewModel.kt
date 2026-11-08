@@ -57,6 +57,10 @@ class VodViewModel(private val c: AppContainer, val kind: Int) : ViewModel() {
     val favoriteKeys = c.db.vod().favoriteKeys().map { it.toSet() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
     val trakt = c.trakt.state
     val refresh = c.iptv.state
+    /** Adult categories need the PIN (shared with adult channels). */
+    val unlocked = c.parental.unlocked
+    fun isUnlocked() = c.parental.isUnlocked()
+    suspend fun checkPin(pin: String) = c.parental.tryUnlock(pin)
     val settings = c.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val continueRaw = c.db.vod().continueWatching()
@@ -141,7 +145,7 @@ class VodViewModel(private val c: AppContainer, val kind: Int) : ViewModel() {
             if (favs.isNotEmpty()) rows += VodRow("My collection", favs)
             val newest = dao.newest(kind, 30)
             if (newest.isNotEmpty()) rows += VodRow("Recently added", newest)
-            for (cat in categories.value.ifEmpty { dao.categoriesOnce(kind) }.take(10)) {
+            for (cat in categories.value.ifEmpty { dao.categoriesOnce(kind) }.filter { !it.adult }.take(10)) {
                 val list = dao.newestIn(kind, cat.id, 24)
                 if (list.size >= 4) rows += VodRow(cat.name, list)
             }

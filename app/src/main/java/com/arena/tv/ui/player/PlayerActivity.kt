@@ -68,6 +68,8 @@ data class PlayerUi(
     val scores: List<com.arena.tv.sports.Game> = emptyList(),
     /** Games whose score just changed (highlighted for a few seconds). */
     val goals: Set<String> = emptySet(),
+    /** This channel is being recorded. */
+    val recording: Boolean = false,
 )
 
 /** One choice in the audio / subtitle / quality panels. groupIndex -1 = Auto (or Off for subtitles). */
@@ -121,6 +123,13 @@ class PlayerActivity : ComponentActivity() {
                 PlayerScreen(activity = this, player = player!!, state = ui.value, zapIds = ids)
             }
         }
+        // Red record button while this channel is being recorded.
+        lifecycleScope.launch {
+            app.recordings.items.collect { l ->
+                val rec = l.any { it.status == "recording" && it.channelId == ui.value.channel?.id }
+                if (rec != ui.value.recording) ui.value = ui.value.copy(recording = rec)
+            }
+        }
         // Scores in the corner: pinned games, your teams, the game on this channel.
         lifecycleScope.launch {
             val ticker = com.arena.tv.sports.ScoreTicker(app)
@@ -155,6 +164,27 @@ class PlayerActivity : ComponentActivity() {
     fun pick(i: Int) { if (i != index) lastIndex = index; index = i; retries = 0; load(); setPanel(null) }
     fun lastChannel() { lastIndex?.let { pick(it) } }
     fun favorite() = toggleFavorite()
+
+    /** Record button: records this channel until the current show ends (2 hours without a guide); again to stop. */
+    fun toggleRecord() = lifecycleScope.launch {
+        val ch = ui.value.channel ?: return@launch
+        val running = app.recordings.items.value.firstOrNull { it.status == "recording" && it.channelId == ch.id }
+        if (running != null) { app.recordings.cancel(running.id); toast("Recording stopped · saved in Settings → Recording"); return@launch }
+        val now = ui.value.now
+        val late = app.prefs.value.planLate * 60_000L
+        app.recordings.recordNow(ch, now?.title ?: ch.name, (now?.stop?.plus(late)) ?: (System.currentTimeMillis() + 2 * 3600_000L))
+        toast(if (now != null) "Recording until ${com.arena.tv.ui.components.Time.clock(now.stop + late)}" else "Recording for 2 hours")
+    }
+
+    /** From the guide panel: record or get reminded about a show. */
+    fun planShow(p: ProgramEntity, kind: String) = lifecycleScope.launch {
+        val ch = ui.value.channel ?: return@launch
+        if (kind == "record" && p.start <= System.currentTimeMillis()) { app.recordings.recordNow(ch, p.title, p.stop + app.prefs.value.planLate * 60_000L); toast("Recording ${p.title}"); return@launch }
+        app.recordings.plan(ch, p.title, p.start, p.stop, kind)
+        toast(if (kind == "record") "Will record ${p.title}" else "We'll remind you before ${p.title}")
+    }
+
+    private fun toast(s: String) = android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_SHORT).show()
     fun resize() { ui.value = ui.value.copy(resize = (ui.value.resize + 1) % 3) }
     fun pip() = enterPip()
     fun showControls(show: Boolean) { ui.value = ui.value.copy(controls = show, panel = if (show) ui.value.panel else null) }

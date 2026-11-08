@@ -156,7 +156,7 @@ private fun Spotlight(vm: VodViewModel, onOpen: (String) -> Unit) {
                     Text(row.title, fontSize = if (wide) 24.sp else 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(row.items, key = { row.title + it.key }) { v ->
-                            PosterCard(v, row.progress[v.key], vm.isWatched(v), Modifier.width(if (wide) 200.dp else 124.dp)) { onOpen(v.key) }
+                            PosterCard(v, row.progress[v.key], vm.isWatched(v), Modifier.width(if (wide) 150.dp else 120.dp)) { onOpen(v.key) }
                         }
                     }
                 }
@@ -239,7 +239,8 @@ private fun Library(vm: VodViewModel, onOpen: (String) -> Unit) {
     val wide = LocalWide.current
     if (wide) {
         Row(Modifier.fillMaxSize().padding(start = 4.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            CategoryPane(vm, Modifier.width(330.dp).fillMaxHeight())
+            // Slim category list (the count sits right next to the name) so the grid gets the room.
+            CategoryPane(vm, Modifier.width(if (com.arena.tv.ui.components.LocalCompactChrome.current) 236.dp else 270.dp).fillMaxHeight())
             Grid(vm, onOpen, Modifier.weight(1f).fillMaxHeight().panel())
         }
     } else {
@@ -258,8 +259,15 @@ private fun CategoryPane(vm: VodViewModel, modifier: Modifier) {
     val cq by vm.catQuery.collectAsStateWithLifecycle()
     val trakt by vm.trakt.collectAsStateWithLifecycle()
     val noun = if (vm.kind == VodKind.MOVIE) "Movies" else "Series"
+    val open by vm.unlocked.collectAsStateWithLifecycle()
+    val settingsNow by vm.settings.collectAsStateWithLifecycle()
+    var pinFor by remember { mutableStateOf<String?>(null) }
     fun pick(id: String) { vm.category.value = id; vm.query.value = "" }
-    LazyColumn(modifier.panel(), contentPadding = PaddingValues(12.dp)) {
+    pinFor?.let { target ->
+        com.arena.tv.ui.components.PinDialog("Adult ${noun.lowercase()}", creating = settingsNow?.parentalPin.isNullOrEmpty(), onDismiss = { pinFor = null },
+            check = { vm.checkPin(it) }) { pick(target); pinFor = null }
+    }
+    LazyColumn(modifier.panel(), contentPadding = PaddingValues(8.dp)) {
         item {
             OutlinedTextField(cq, { vm.catQuery.value = it }, Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 placeholder = { Text("Search in categories") }, singleLine = true, shape = RoundedCornerShape(16.dp))
@@ -271,7 +279,9 @@ private fun CategoryPane(vm: VodViewModel, modifier: Modifier) {
         if (trakt.connected) item { PaneItem("Trakt watchlist", null, cat == CAT_WATCHLIST, { pick(CAT_WATCHLIST) }) }
         item { PaneLabel("Categories") }
         items(cats.filter { cq.isBlank() || it.name.contains(cq, true) }, key = { it.key }) { c ->
-            PaneItem(c.name, c.count, cat == c.id, { pick(c.id) })
+            // Adult categories are locked: the PIN is asked before they open.
+            PaneItem(if (c.adult && !open) "🔒 ${c.name}" else c.name, c.count, cat == c.id,
+                { if (c.adult && !vm.isUnlocked()) pinFor = c.id else pick(c.id) }, dim = c.adult && !open)
         }
     }
 }
@@ -281,14 +291,22 @@ private fun CategoryChips(vm: VodViewModel) {
     val cats by vm.categories.collectAsStateWithLifecycle()
     val cat by vm.category.collectAsStateWithLifecycle()
     val trakt by vm.trakt.collectAsStateWithLifecycle()
+    val open by vm.unlocked.collectAsStateWithLifecycle()
     val all = buildList {
         add(CAT_ALL to "All"); add(CAT_FAV to "★ Favorites"); add(CAT_CONTINUE to "Continue")
         if (trakt.connected) add(CAT_WATCHLIST to "Watchlist")
-        cats.forEach { add(it.id to it.name) }
+        cats.forEach { add(it.id to if (it.adult && !open) "🔒 ${it.name}" else it.name) }
+    }
+    val adultIds = cats.filter { it.adult }.map { it.id }.toSet()
+    val settingsNow by vm.settings.collectAsStateWithLifecycle()
+    var pinFor by remember { mutableStateOf<String?>(null) }
+    pinFor?.let { target ->
+        com.arena.tv.ui.components.PinDialog("Adult titles", creating = settingsNow?.parentalPin.isNullOrEmpty(), onDismiss = { pinFor = null },
+            check = { vm.checkPin(it) }) { vm.category.value = target; vm.query.value = ""; pinFor = null }
     }
     LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(all, key = { it.first }) { (id, label) ->
-            FilterChip(modifier = Modifier.focusOutline(), selected = cat == id, onClick = { vm.category.value = id; vm.query.value = "" }, label = { Text(label, maxLines = 1) })
+            FilterChip(modifier = Modifier.focusOutline(), selected = cat == id, onClick = { if (id in adultIds && !vm.isUnlocked()) pinFor = id else { vm.category.value = id; vm.query.value = "" } }, label = { Text(label, maxLines = 1) })
         }
     }
 }
@@ -305,8 +323,9 @@ private fun Grid(vm: VodViewModel, onOpen: (String) -> Unit, modifier: Modifier)
         Box(modifier) { if (end) EmptyState("Nothing here", "Try another category or filter.") else Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() } }
         return
     }
-    LazyVerticalGrid(GridCells.Adaptive(if (wide) 200.dp else 108.dp), modifier, state = state,
-        contentPadding = PaddingValues(if (wide) 16.dp else 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    // Smaller posters: about 4 across on a TV next to the category list.
+    LazyVerticalGrid(GridCells.Adaptive(if (wide) 140.dp else 104.dp), modifier, state = state,
+        contentPadding = PaddingValues(if (wide) 14.dp else 12.dp), horizontalArrangement = Arrangement.spacedBy(if (wide) 14.dp else 10.dp), verticalArrangement = Arrangement.spacedBy(if (wide) 14.dp else 10.dp)) {
         items(items, key = { it.key }) { v -> PosterCard(v, null, vm.isWatched(v), Modifier.fillMaxWidth()) { onOpen(v.key) } }
     }
 }
@@ -315,19 +334,19 @@ private fun Grid(vm: VodViewModel, onOpen: (String) -> Unit, modifier: Modifier)
 @Composable
 fun PosterCard(v: VodEntity, progress: ProgressEntity?, watched: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val wide = LocalWide.current
-    Box(modifier.aspectRatio(2f / 3f).clip(RoundedCornerShape(if (wide) 16.dp else 10.dp)).background(ArenaColors.Surface).clickable(onClick = onClick)) {
+    Box(modifier.aspectRatio(2f / 3f).focusOutline(RoundedCornerShape(if (wide) 14.dp else 10.dp)).clip(RoundedCornerShape(if (wide) 14.dp else 10.dp)).background(ArenaColors.Surface).clickable(onClick = onClick)) {
         AsyncImage(v.poster, v.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color(0xE6000000))))
         v.rating?.let { r ->
-            Text("★ ${(r / 2).let { if (it % 1.0 == 0.0) "${it.toInt()}" else "%.1f".format(it) }}/5", color = Color.White, fontSize = if (wide) 15.sp else 11.sp,
+            Text("★ ${(r / 2).let { if (it % 1.0 == 0.0) "${it.toInt()}" else "%.1f".format(it) }}/5", color = Color.White, fontSize = if (wide) 12.sp else 11.sp,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(8.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x99000000)).padding(horizontal = 7.dp, vertical = 3.dp))
+                modifier = Modifier.padding(7.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x99000000)).padding(horizontal = 6.dp, vertical = 2.dp))
         }
         if (watched) Icon(Icons.Rounded.CheckCircle, "Watched", tint = ArenaColors.Accent,
             modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(if (wide) 24.dp else 18.dp).clip(CircleShape).background(Color.Black))
-        Column(Modifier.align(Alignment.BottomStart).padding(if (wide) 14.dp else 8.dp)) {
+        Column(Modifier.align(Alignment.BottomStart).padding(if (wide) 10.dp else 8.dp)) {
             Text(v.name + (v.year?.takeIf { !v.name.contains("$it") }?.let { " ($it)" } ?: ""), color = Color.White,
-                fontSize = if (wide) 18.sp else 12.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = if (wide) 22.sp else 15.sp)
+                fontSize = if (wide) 14.sp else 12.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = if (wide) 17.sp else 15.sp)
             progress?.let { p ->
                 if (p.season != null) Text("S${p.season} E${p.episode}", color = Color(0xAAFFFFFF), fontSize = 11.sp)
                 Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(Color(0x44FFFFFF))) {

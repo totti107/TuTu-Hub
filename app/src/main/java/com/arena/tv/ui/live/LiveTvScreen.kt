@@ -503,7 +503,8 @@ internal fun EpgGridContent(rows: List<ChannelEntity>, programs: Map<String, Lis
 }
 
 @Composable
-internal fun ScheduleList(channelId: String?, schedule: List<ProgramEntity>, now: Long) {
+internal fun ScheduleList(channelId: String?, schedule: List<ProgramEntity>, now: Long,
+    marks: Map<Long, String> = emptyMap(), onPick: ((ProgramEntity) -> Unit)? = null) {
         val listState = rememberLazyListState()
         val liveIndex = schedule.indexOfFirst { it.start <= now && it.stop > now }
         LaunchedEffect(channelId, schedule.size) { if (liveIndex > 1) listState.scrollToItem(liveIndex - 1) }
@@ -514,6 +515,7 @@ internal fun ScheduleList(channelId: String?, schedule: List<ProgramEntity>, now
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (live) ArenaColors.SurfaceHi else Color.Transparent)
                         .then(if (live) Modifier.drawBehind { drawRect(Color.White, size = Size(3.dp.toPx(), size.height)) } else Modifier)
+                        .then(if (onPick != null && !past) Modifier.clickable { onPick(p) } else Modifier)
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -521,6 +523,8 @@ internal fun ScheduleList(channelId: String?, schedule: List<ProgramEntity>, now
                     Spacer(Modifier.width(12.dp))
                     Text(p.title, Modifier.weight(1f), color = if (past) ArenaColors.Muted else ArenaColors.Text,
                         fontWeight = if (live) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    marks[p.start]?.let { m -> Text(m, color = if (m.startsWith("●")) ArenaColors.Live else ArenaColors.Accent, fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp)) }
                     if (live) Text("LIVE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp,
                         modifier = Modifier.padding(start = 12.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x33FFFFFF)).padding(horizontal = 8.dp, vertical = 3.dp))
                     else Text(Time.clock(p.start), color = ArenaColors.Muted, fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))

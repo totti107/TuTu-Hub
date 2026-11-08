@@ -49,6 +49,8 @@ import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -63,6 +65,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -87,6 +90,8 @@ import androidx.media3.ui.PlayerView
 import com.arena.tv.app
 import com.arena.tv.data.ChannelEntity
 import com.arena.tv.data.ProgramEntity
+import com.arena.tv.ui.theme.focusOutline
+import androidx.compose.material.icons.rounded.FiberManualRecord
 import com.arena.tv.sports.Game
 import com.arena.tv.ui.components.Logo
 import com.arena.tv.ui.components.Time
@@ -234,6 +239,8 @@ private fun Controls(a: PlayerActivity, s: PlayerUi, touched: () -> Unit) {
                     Box(Modifier.width(1.dp).height(40.dp).background(Color(0x44FFFFFF)))
                     CtrlButton(Icons.Rounded.FastRewind, "Previous channel", onClick = t(a::lastChannel))
                     CtrlButton(Icons.AutoMirrored.Rounded.List, "Channels", onClick = t { a.setPanel("channels") })
+                    CtrlButton(Icons.Rounded.FiberManualRecord, if (s.recording) "Stop recording" else "Record", tint = if (s.recording) ArenaColors.Live else Color.White,
+                        onClick = t { a.toggleRecord() })
                     CtrlButton(Icons.Rounded.EmojiEvents, "Live scores", onClick = t { a.setPanel("scores") })
                     CtrlButton(if (s.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder, "Favorite", tint = if (s.favorite) ArenaColors.Gold else Color.White,
                         onClick = t(a::favorite))
@@ -340,7 +347,20 @@ private fun EpgPanel(a: PlayerActivity, ch: ChannelEntity?) {
         value = ch?.epgKey?.let { a.app.db.programs().schedule(it, now - 3 * 3600_000L, now + 18 * 3600_000L) } ?: emptyList()
     }
     if (ch?.epgKey == null) { Text("No TV guide for this channel.", color = ArenaColors.Muted, modifier = Modifier.padding(16.dp)); return }
-    Box(Modifier.padding(horizontal = 8.dp)) { com.arena.tv.ui.live.ScheduleList(ch.id, schedule, now) }
+    // Tap a show: record it or get a reminder (Planner).
+    val planned by a.app.recordings.items.collectAsState()
+    val marks = planned.filter { it.channelId == ch.id && it.status in setOf("scheduled", "recording") }
+        .associate { r -> (if (r.kind == "record") r.start + a.app.prefs.value.planEarly * 60_000L else r.start) to if (r.kind == "record") "● REC" else "⏰" }
+    var picked by remember { mutableStateOf<ProgramEntity?>(null) }
+    Box(Modifier.padding(horizontal = 8.dp)) { com.arena.tv.ui.live.ScheduleList(ch.id, schedule, now, marks) { picked = it } }
+    picked?.let { p ->
+        val live = p.start <= System.currentTimeMillis()
+        AlertDialog(onDismissRequest = { picked = null }, containerColor = ArenaColors.Surface,
+            title = { Text(p.title) },
+            text = { Text("${Time.range(p.start, p.stop)} on ${ch.name}", color = ArenaColors.Muted) },
+            confirmButton = { Button(onClick = { a.planShow(p, "record"); picked = null }, modifier = Modifier.focusOutline()) { Text(if (live) "Record from now" else "Record") } },
+            dismissButton = { if (!live) TextButton(onClick = { a.planShow(p, "remind"); picked = null }, modifier = Modifier.focusOutline()) { Text("Remind me") } })
+    }
 }
 
 @Composable

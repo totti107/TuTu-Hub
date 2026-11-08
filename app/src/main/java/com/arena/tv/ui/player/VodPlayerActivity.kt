@@ -58,6 +58,9 @@ import kotlinx.coroutines.launch
 @UnstableApi
 class VodPlayerActivity : ComponentActivity() {
     companion object {
+        fun startFile(context: Context, path: String, title: String, subtitle: String?) {
+            context.startActivity(Intent(context, VodPlayerActivity::class.java).putExtra("file", path).putExtra("title", title).putExtra("subtitle", subtitle))
+        }
         fun start(context: Context, vodKey: String, episodeKey: String?) {
             context.startActivity(Intent(context, VodPlayerActivity::class.java).putExtra("vod", vodKey).putExtra("ep", episodeKey))
         }
@@ -99,18 +102,27 @@ class VodPlayerActivity : ComponentActivity() {
                 error.value = "Can't play this title (${e.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')})."
             }
         })
+        val file = intent.getStringExtra("file")
+        if (file != null) {
+            // A recording saved on this device.
+            title.value = intent.getStringExtra("title") ?: "Recording"
+            subtitle.value = intent.getStringExtra("subtitle")
+            player.setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(java.io.File(file))))
+            player.prepare(); player.play()
+        } else {
         val vodKey = intent.getStringExtra("vod") ?: return finish()
-        val epKey = intent.getStringExtra("ep")
-        lifecycleScope.launch {
-            val v = app.db.vod().byKey(vodKey) ?: return@launch finish()
-            vod = v
-            if (epKey != null) {
-                episodes = app.vod.episodes(v)
-                episodes.firstOrNull { it.key == epKey }?.let(::playEpisode) ?: finish()
-            } else {
-                title.value = v.name
-                subtitle.value = v.year?.toString()
-                prepare(app.vod.movieUrl(v), v.key)
+            val epKey = intent.getStringExtra("ep")
+            lifecycleScope.launch {
+                val v = app.db.vod().byKey(vodKey) ?: return@launch finish()
+                vod = v
+                if (epKey != null) {
+                    episodes = app.vod.episodes(v)
+                    episodes.firstOrNull { it.key == epKey }?.let(::playEpisode) ?: finish()
+                } else {
+                    title.value = v.name
+                    subtitle.value = v.year?.toString()
+                    prepare(app.vod.movieUrl(v), v.key)
+                }
             }
         }
         startProgressLoop()

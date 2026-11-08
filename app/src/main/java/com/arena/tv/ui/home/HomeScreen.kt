@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.FiberManualRecord
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -86,6 +87,8 @@ class HomeActions(
     val game: (Game) -> Unit,
     val vod: (String) -> Unit,
     val settings: () -> Unit,
+    val recordings: () -> Unit = settings,
+    val planner: () -> Unit = settings,
 )
 
 /** Everything Home shows, gathered once so the tiles stay simple (and can be previewed with sample data). */
@@ -167,10 +170,11 @@ private fun WideHome(vm: HomeData, a: HomeActions) {
             SportsTile(vm, a, Modifier.weight(0.9f))
         }
         Row(Modifier.fillMaxWidth().height(62.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            SmallTile("Playlists", "Manage playlists", Icons.AutoMirrored.Rounded.PlaylistPlay, a.settings, Modifier.weight(1f))
-            SmallTile("Reload", "Channels & guide", Icons.Rounded.Refresh, vm.reload, Modifier.weight(1f))
-            SmallTile("Updates", "Get the newest version", Icons.Rounded.SystemUpdate, vm.checkUpdates, Modifier.weight(1f))
-            SmallTile("Settings", "Playback & backup", Icons.Rounded.Settings, a.settings, Modifier.weight(1f))
+            SmallTile("Playlists", "Manage", Icons.AutoMirrored.Rounded.PlaylistPlay, a.settings, Modifier.weight(1f))
+            SmallTile("Recordings", "Saved shows", Icons.Rounded.FiberManualRecord, a.recordings, Modifier.weight(1f))
+            SmallTile("Reload", "Channels", Icons.Rounded.Refresh, vm.reload, Modifier.weight(1f))
+            SmallTile("Updates", "New version", Icons.Rounded.SystemUpdate, vm.checkUpdates, Modifier.weight(1f))
+            SmallTile("Settings", "All options", Icons.Rounded.Settings, a.settings, Modifier.weight(1f))
         }
     }
 }
@@ -195,6 +199,10 @@ private fun PhoneHome(vm: HomeData, a: HomeActions) {
         Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SmallTile("Playlists", null, Icons.AutoMirrored.Rounded.PlaylistPlay, a.settings, Modifier.weight(1f))
             SmallTile("Reload", null, Icons.Rounded.Refresh, vm.reload, Modifier.weight(1f))
+        }
+        Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SmallTile("Recordings", null, Icons.Rounded.FiberManualRecord, a.recordings, Modifier.weight(1f))
+            SmallTile("Planner", null, Icons.Rounded.CalendarMonth, a.planner, Modifier.weight(1f))
         }
         Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SmallTile("Updates", null, Icons.Rounded.SystemUpdate, vm.checkUpdates, Modifier.weight(1f))

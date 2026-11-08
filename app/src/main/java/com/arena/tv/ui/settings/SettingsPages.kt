@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.EventNote
+import androidx.compose.material.icons.rounded.FiberManualRecord
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Person
@@ -48,6 +50,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arena.tv.data.Prefs
+import com.arena.tv.app
+import kotlinx.coroutines.launch
 import com.arena.tv.ui.components.DropChip
 import com.arena.tv.ui.components.QrCode
 import com.arena.tv.ui.theme.ArenaColors
@@ -63,6 +67,8 @@ enum class SettingsPage(val label: String, val icon: ImageVector, val hint: Stri
     PROTECTION("Protection", Icons.Rounded.Lock, "Adult channels and PIN"),
     SPORTS("Sports", Icons.Rounded.SportsSoccer, "Sports, teams, leagues, odds"),
     ACCOUNTS("Trakt", Icons.Rounded.Person, "Sync what you watch"),
+    RECORDING("Recording", Icons.Rounded.FiberManualRecord, "Your recordings, storage and limits"),
+    PLANNER("Planner", Icons.Rounded.EventNote, "Planned recordings, reminders and timing"),
     BACKUP("Backup & restore", Icons.Rounded.Backup, "Move your setup to another device"),
     UPDATES("Updates & about", Icons.Rounded.SystemUpdate, "App version and updates"),
 }
@@ -366,6 +372,159 @@ private fun NoGuideList(vm: SettingsViewModel) {
                     }
                     Text("No guide", color = ArenaColors.Muted, fontSize = 12.sp)
                 }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------ Recording
+
+private fun size(b: Long): String = when {
+    b >= 1L shl 30 -> "%.1f GB".format(b / (1L shl 30).toDouble())
+    b >= 1L shl 20 -> "%.0f MB".format(b / (1L shl 20).toDouble())
+    else -> "%.0f KB".format(b / 1024.0)
+}
+
+private fun whenText(r: com.arena.tv.data.Recording): String {
+    val d = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(r.start))
+    return "$d · ${com.arena.tv.ui.components.Time.range(r.start, r.end)}"
+}
+
+fun LazyListScope.recordingItems(p: Prefs, set: ((Prefs) -> Prefs) -> Unit) {
+    item { RecordingList() }
+    item { RecordingStorage(p, set) }
+    item {
+        SetCard("Naming and limits") {
+            ChoiceRow("File names", null, listOf("channel_date_title" to "Channel · Date · Title", "date_channel_title" to "Date · Channel · Title",
+                "title_date" to "Title · Date"), p.recPattern) { v -> set { it.copy(recPattern = v) } }
+            ChoiceRow("Keep recordings", null, listOf(0 to "Until I delete them", 7 to "7 days", 30 to "30 days", 90 to "90 days"), p.recKeepDays) { v -> set { it.copy(recKeepDays = v) } }
+            ChoiceRow("Recordings at the same time", "Many providers allow one connection only: recording while watching another channel may not work.",
+                listOf(1 to "1", 2 to "2", 3 to "3"), p.recMax) { v -> set { it.copy(recMax = v) } }
+        }
+    }
+}
+
+@Composable
+private fun RecordingList() {
+    val context = LocalContext.current
+    val recs = context.app.recordings
+    val all by recs.items.collectAsState()
+    val list = all.filter { it.kind == "record" && it.status != "scheduled" }.sortedByDescending { it.start }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    SetCard("Your recordings") {
+        if (list.isEmpty()) Text("Nothing recorded yet. Press ● Record while watching a channel, or pick a show in the player's TV guide.",
+            color = ArenaColors.Muted, fontSize = 13.sp)
+        list.forEach { r ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (r.status == "recording") Text("● ", color = ArenaColors.Live, fontWeight = FontWeight.Bold)
+                        Text(r.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
+                    Text("${r.channelName} · ${whenText(r)} · ${size(r.sizeBytes)}" + (r.error?.let { " · $it" } ?: ""),
+                        color = if (r.status == "failed") ArenaColors.Live else ArenaColors.Muted, fontSize = 12.sp, maxLines = 2)
+                }
+                when (r.status) {
+                    "recording" -> TextButton(onClick = { scope.launch { recs.cancel(r.id) } }, modifier = Modifier.focusOutline()) { Text("Stop") }
+                    "done" -> r.path?.let { path -> TextButton(onClick = { com.arena.tv.ui.player.VodPlayerActivity.startFile(context, path, r.title, r.channelName) },
+                        modifier = Modifier.focusOutline()) { Text("Play") } }
+                }
+                if (r.status != "recording") TextButton(onClick = { scope.launch { recs.delete(r.id) } }, modifier = Modifier.focusOutline()) { Text("Delete", color = ArenaColors.Live) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordingStorage(p: Prefs, set: ((Prefs) -> Prefs) -> Unit) {
+    val recs = LocalContext.current.app.recordings
+    val free = androidx.compose.runtime.remember(p.recFolder) { recs.freeBytes(p) }
+    val volumes = androidx.compose.runtime.remember { recs.volumes() }
+    SetCard("Storage") {
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Text("Free space", Modifier.weight(1f), fontSize = 16.sp)
+            Text(size(free), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+        if (volumes.size > 1) ChoiceRow("Save recordings to", "Plug in a USB drive or SD card to see it here.", volumes, p.recFolder) { v -> set { it.copy(recFolder = v) } }
+        else Text("Saved in the app's storage. A USB drive or SD card shows up here when plugged in.", color = ArenaColors.Muted, fontSize = 12.sp)
+        Text("About 1–3 GB per hour in HD.", color = ArenaColors.Muted, fontSize = 12.sp)
+    }
+}
+
+// ------------------------------------------------------------ Planner
+
+fun LazyListScope.plannerItems(p: Prefs, set: ((Prefs) -> Prefs) -> Unit, askNotifications: () -> Unit) {
+    item { PlannerPermissions(askNotifications) }
+    item {
+        SetCard("Timing") {
+            ChoiceRow("Recording start", "Start recording before the scheduled time.", listOf(0 to "On time", 1 to "1 min early", 2 to "2 min early",
+                5 to "5 min early", 10 to "10 min early"), p.planEarly) { v -> set { it.copy(planEarly = v) } }
+            ChoiceRow("Recording end", "Keep recording after the scheduled end (extra time, delays).", listOf(0 to "Stop on time", 5 to "+5 min", 10 to "+10 min",
+                15 to "+15 min", 30 to "+30 min"), p.planLate) { v -> set { it.copy(planLate = v) } }
+            ChoiceRow("Reminder notification", "How early to notify you before a show starts.", listOf(1 to "1 minute early", 2 to "2 minutes early",
+                5 to "5 minutes early", 10 to "10 minutes early", 15 to "15 minutes early"), p.planRemind) { v -> set { it.copy(planRemind = v) } }
+        }
+    }
+    item { PlannedList() }
+}
+
+@Composable
+private fun PlannerPermissions(askNotifications: () -> Unit) {
+    val context = LocalContext.current
+    var tick by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    // Re-check when coming back from Android's settings.
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(owner) {
+        val o = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) tick++ }
+        owner.lifecycle.addObserver(o); onDispose { owner.lifecycle.removeObserver(o) }
+    }
+    val notifications = androidx.compose.runtime.remember(tick) { androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() }
+    val battery = androidx.compose.runtime.remember(tick) {
+        android.os.Build.VERSION.SDK_INT < 23 || context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+    }
+    fun open(action: String, withPackage: Boolean) = runCatching {
+        val i = android.content.Intent(action)
+        if (withPackage) i.putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+        context.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+    SetCard("Permissions") {
+        StatusRow("Notifications", if (notifications) "Reminders and final scores can be shown" else "Notifications are off — select to allow",
+            if (notifications) "Allowed" else "Not allowed", notifications) {
+            if (android.os.Build.VERSION.SDK_INT >= 33 && !notifications) askNotifications() else open(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS, true)
+        }
+        StatusRow("Battery", if (battery) "Planned recordings and reminders run on time" else "Planned recordings may not start — select and set TuTu to \"Unrestricted\"",
+            if (battery) "Unrestricted" else "Restricted", battery) { open(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS, false) }
+    }
+}
+
+@Composable
+private fun StatusRow(title: String, desc: String, value: String, ok: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().focusOutline(RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 16.sp)
+            Text(desc, color = ArenaColors.Muted, fontSize = 12.sp)
+        }
+        Text(value, color = if (ok) ArenaColors.Text else ArenaColors.Gold, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun PlannedList() {
+    val recs = LocalContext.current.app.recordings
+    val all by recs.items.collectAsState()
+    val list = all.filter { it.status == "scheduled" }.sortedBy { it.start }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    SetCard("Planned") {
+        if (list.isEmpty()) Text("Nothing planned. While watching, open the TV guide in the player and select a show to record it or get a reminder.",
+            color = ArenaColors.Muted, fontSize = 13.sp)
+        list.forEach { r ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (r.kind == "record") "● " else "⏰ ", color = if (r.kind == "record") ArenaColors.Live else ArenaColors.Accent)
+                Column(Modifier.weight(1f)) {
+                    Text(r.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text("${r.channelName} · ${whenText(r)}", color = ArenaColors.Muted, fontSize = 12.sp)
+                }
+                TextButton(onClick = { scope.launch { recs.cancel(r.id) } }, modifier = Modifier.focusOutline()) { Text("Cancel") }
             }
         }
     }

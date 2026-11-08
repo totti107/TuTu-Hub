@@ -36,6 +36,9 @@ class AppContainer(context: Context) {
     val updater = com.arena.tv.data.Updater(context.applicationContext, http)
     val backup = com.arena.tv.data.BackupManager(settings, db)
     val reminders = com.arena.tv.data.Reminders(context.applicationContext)
+    val recordings = com.arena.tv.data.Recordings(context.applicationContext)
+    /** Opens Settings on a given page (e.g. "RECORDING" from the Home screen). */
+    val settingsPage = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
     /** Latest playback/browsing options, readable without waiting (players read them when they start). */
     val prefs = kotlinx.coroutines.flow.MutableStateFlow(com.arena.tv.data.Prefs())
@@ -53,5 +56,7 @@ class AppContainer(context: Context) {
         val bg = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
         sports.onGames = { games -> bg.launch { runCatching { reminders.schedule(games) } } }
         reminders.startDailyCheck()
+        // Planned recordings / reminders: alarms again after an app update, expired recordings cleaned up.
+        bg.launch { kotlinx.coroutines.delay(3_000); runCatching { recordings.rearm() } }
     }
 }

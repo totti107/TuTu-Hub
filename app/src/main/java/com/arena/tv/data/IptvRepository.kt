@@ -53,7 +53,9 @@ class IptvRepository(
         if (!s.hasSource) return
         val now = System.currentTimeMillis()
         // 3.3.0 stores channels in the provider's category order: reload once after updating.
-        if (settings.dataVersion() < 3) { settings.setDataVersion(3); refreshAll(); return }
+        if (settings.dataVersion() < 3) { settings.setDataVersion(4); refreshAll(); return }
+        // 3.9.0 marks adult movie / series categories: no download needed, just re-apply the rules once.
+        if (settings.dataVersion() < 4) { settings.setDataVersion(4); applyVisibility() }
         when {
             s.playlists.any { it.enabled && it.valid && now - it.lastRefresh > 24 * 3600_000L } -> refreshAll()
             s.playlists.any { it.enabled && it.valid && now - it.lastEpg > 8 * 3600_000L } -> refreshEpg()
@@ -172,8 +174,11 @@ class IptvRepository(
     suspend fun applyVisibility() = withContext(Dispatchers.IO) {
         val s = settings.current()
         db.channels().applyVisibility(s.activeIds, s.hiddenGroups.toList(), s.hideAdult)
-        db.vod().applyVisibility(s.activeIds)
-        db.vod().applyCategoryVisibility(s.activeIds)
+        // Adult movie / series categories (by name, like "18+ | ..."), then the same hide / lock rules as channels.
+        val adultCats = db.vod().categoryNames().filter { Adult.isAdult(it.name) }.map { it.id }
+        db.vod().markAdultCategories(adultCats); db.vod().markAdultTitles(adultCats)
+        db.vod().applyVisibility(s.activeIds, s.hideAdult)
+        db.vod().applyCategoryVisibility(s.activeIds, s.hideAdult)
         _state.update { it.copy(version = it.version + 1) }
     }
 

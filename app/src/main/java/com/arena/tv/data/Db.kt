@@ -179,7 +179,7 @@ interface UserDao {
     entities = [ChannelEntity::class, ProgramEntity::class, FavoriteChannelEntity::class, FavoriteTeamEntity::class,
         RecentChannelEntity::class, FeedbackEntity::class, ProgramFts::class, VodEntity::class, VodCategoryEntity::class, EpisodeEntity::class,
         ProgressEntity::class, VodFavoriteEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class ArenaDb : RoomDatabase() {
@@ -248,9 +248,16 @@ abstract class ArenaDb : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `vod` ADD COLUMN `adult` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `vod_categories` ADD COLUMN `adult` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun create(context: Context): ArenaDb =
             Room.databaseBuilder(context, ArenaDb::class.java, "arena.db")
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .fallbackToDestructiveMigration()
                 .build()
     }

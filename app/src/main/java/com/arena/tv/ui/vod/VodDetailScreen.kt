@@ -87,11 +87,14 @@ class VodDetailViewModel(private val c: AppContainer, val key: String) : ViewMod
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
     val favorite = c.db.vod().favoriteKeys().map { key in it }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val trakt = c.trakt.state
+    /** "You might also like": newest titles from the same category. */
+    val related = MutableStateFlow<List<VodEntity>>(emptyList())
 
     init {
         viewModelScope.launch {
             val v = c.db.vod().byKey(key) ?: return@launch
             item.value = v
+            related.value = runCatching { c.db.vod().newestIn(v.kind, v.categoryId, 24).filter { it.key != key && it.poster != null }.take(16) }.getOrDefault(emptyList())
             details.value = c.vod.details(v)
             item.value = c.db.vod().byKey(key) ?: v
             if (v.kind == VodKind.SERIES) {
@@ -116,13 +119,14 @@ class VodDetailViewModel(private val c: AppContainer, val key: String) : ViewMod
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun VodDetailScreen(key: String, onBack: () -> Unit) {
+fun VodDetailScreen(key: String, onBack: () -> Unit, onOpen: (String) -> Unit = {}) {
     val vm = appViewModel(key = "vod-detail-$key") { VodDetailViewModel(it, key) }
     val v by vm.item.collectAsStateWithLifecycle()
     val d by vm.details.collectAsStateWithLifecycle()
     val eps by vm.episodes.collectAsStateWithLifecycle()
     val season by vm.season.collectAsStateWithLifecycle()
     val progress by vm.progress.collectAsStateWithLifecycle()
+    val related by vm.related.collectAsStateWithLifecycle()
     val fav by vm.favorite.collectAsStateWithLifecycle()
     val trakt by vm.trakt.collectAsStateWithLifecycle()
     val wide = LocalWide.current
@@ -145,7 +149,7 @@ fun VodDetailScreen(key: String, onBack: () -> Unit) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item {
-            Box(Modifier.fillMaxWidth().height(if (wide) 520.dp else 420.dp)) {
+            Box(Modifier.fillMaxWidth().height(if (wide) 440.dp else 420.dp)) {
                 AsyncImage(d?.backdrop ?: item.backdrop ?: d?.poster ?: item.poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
                     alignment = if (wide) Alignment.CenterEnd else Alignment.TopCenter)
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color(0xF2000000), 0.6f to Color(0xAA000000), 1f to Color(0x22000000))))
@@ -153,12 +157,12 @@ fun VodDetailScreen(key: String, onBack: () -> Unit) {
                 IconAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onClick = onBack)
                 Row(Modifier.align(Alignment.BottomStart).padding(start = if (wide) 56.dp else 16.dp, end = 16.dp, bottom = 24.dp)) {
                     if (wide) {
-                        AsyncImage(d?.poster ?: item.poster, null, Modifier.width(220.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
+                        AsyncImage(d?.poster ?: item.poster, null, Modifier.width(170.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
                         Spacer(Modifier.width(32.dp))
                     }
                     Column(Modifier.widthIn(max = 760.dp).align(Alignment.Bottom)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(item.name, fontSize = if (wide) 46.sp else 28.sp, fontWeight = FontWeight.Bold, lineHeight = if (wide) 50.sp else 32.sp,
+                            Text(item.name, fontSize = if (wide) 34.sp else 28.sp, fontWeight = FontWeight.Bold, lineHeight = if (wide) 38.sp else 32.sp,
                                 maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                             if (vm.isWatched()) Icon(Icons.Rounded.CheckCircle, "Watched", tint = ArenaColors.Accent, modifier = Modifier.padding(start = 10.dp).size(28.dp))
                         }
@@ -197,6 +201,15 @@ fun VodDetailScreen(key: String, onBack: () -> Unit) {
                 (d?.plot ?: item.plot)?.let { Text(it, color = Color(0xDDFFFFFF), fontSize = if (wide) 18.sp else 15.sp, lineHeight = if (wide) 26.sp else 21.sp) }
                 d?.director?.let { Text("Director: $it", color = ArenaColors.Muted, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp)) }
                 d?.genre?.let { Text("Genre: $it", color = ArenaColors.Muted, fontSize = 14.sp) }
+            }
+        }
+        if (!isSeries && related.isNotEmpty()) {
+            item {
+                Text("You might also like", fontSize = if (wide) 22.sp else 18.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = if (wide) 56.dp else 16.dp, top = 24.dp, bottom = 10.dp))
+                LazyRow(contentPadding = PaddingValues(horizontal = if (wide) 52.dp else 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(related, key = { it.key }) { r -> PosterCard(r, null, false, Modifier.width(if (wide) 140.dp else 110.dp)) { onOpen(r.key) } }
+                }
             }
         }
         if (isSeries) {
