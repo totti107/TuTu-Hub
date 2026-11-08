@@ -151,7 +151,7 @@ fun SportsHubScreen(onOpenGame: (Game) -> Unit, onOpenSettings: () -> Unit) {
                 action = "Retry", onAction = vm::manualRefresh,
             )
             state.tab == 0 && layout == "list" -> GameList(visible, favKeys, state, onOpenGame)
-            state.tab == 0 -> ForYou(visible, favKeys, state.channelCounts, onOpenGame, spotlight = layout == "spotlight")
+            state.tab == 0 -> ForYou(visible, favKeys, state.channelCounts, spotlight = layout == "spotlight", onOpen = onOpenGame)
             state.tab == 1 -> GameList(visible, favKeys, state, onOpenGame)
             else -> GameList(following, favKeys, state, onOpenGame)
         }

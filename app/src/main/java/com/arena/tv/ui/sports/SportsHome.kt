@@ -76,7 +76,7 @@ fun featured(games: List<Game>, favKeys: Set<String>, counts: Map<String, Int>):
 }
 
 @Composable
-fun ForYou(games: List<Game>, favKeys: Set<String>, counts: Map<String, Int>, onOpen: (Game) -> Unit, spotlight: Boolean = true) {
+fun ForYou(games: List<Game>, favKeys: Set<String>, counts: Map<String, Int>, spotlight: Boolean = true, onOpen: (Game) -> Unit) {
     val wide = LocalWide.current
     val hero = featured(games, favKeys, counts)
     val live = games.filter { it.isLive }
