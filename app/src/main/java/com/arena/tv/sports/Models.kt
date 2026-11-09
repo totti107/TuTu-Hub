@@ -88,6 +88,9 @@ data class Game(
     val apiLeague: String? = null,
 ) {
     val isLive get() = state == GameState.LIVE
+    /** Players / teams not known yet (a later round of a tournament). */
+    val undecided: Boolean get() = headToHead && (home.displayName in TBD_NAMES || away.displayName in TBD_NAMES)
+
     /** Headline for lists: "Home v Away" or the event name. */
     val headline: String get() = if (headToHead) "${home.displayName} v ${away.displayName}" else title ?: league.name
 }
@@ -159,3 +162,6 @@ data class GameDetails(
     val odds: Odds? = null,
     val attendance: String? = null,
 )
+
+/** How the feed writes a player or team that isn't decided yet. */
+val TBD_NAMES = setOf("TBD", "?", "TBA", "To be decided", "To be announced")

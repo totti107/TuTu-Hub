@@ -72,16 +72,19 @@ fun featured(games: List<Game>, favKeys: Set<String>, counts: Map<String, Int>):
         r -= com.arena.tv.sports.Leagues.all.indexOfFirst { it.key == g.league.key }.coerceAtLeast(0)
         return r
     }
-    return games.sortedByDescending(::rank).take(6)
+    return games.filter { !it.undecided }.sortedByDescending(::rank).take(6)
 }
 
 @Composable
 fun ForYou(games: List<Game>, favKeys: Set<String>, counts: Map<String, Int>, spotlight: Boolean = true, onOpen: (Game) -> Unit) {
     val wide = LocalWide.current
     val hero = featured(games, favKeys, counts)
-    val live = games.filter { it.isLive }
-    val upcoming = games.filter { it.state == GameState.PRE }.sortedBy { it.startMillis }
-    val finished = games.filter { it.state == GameState.POST }.sortedByDescending { it.startMillis }
+    // Rows layout: games in the Featured row aren't repeated below. Undecided matches (players "TBD") go last.
+    val shown = if (spotlight) emptySet() else hero.map { it.id }.toSet()
+    val rest = games.filter { it.id !in shown }
+    val live = rest.filter { it.isLive }
+    val upcoming = rest.filter { it.state == GameState.PRE }.sortedWith(compareBy<Game> { it.undecided }.thenBy { it.startMillis })
+    val finished = rest.filter { it.state == GameState.POST }.sortedByDescending { it.startMillis }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         // "Spotlight" layout: the big banner. "Rows": the same featured games as a normal row of cards.
         if (hero.isNotEmpty()) item { if (spotlight) HeroCarousel(hero, counts, onOpen) else CardRow("Featured", hero, counts, onOpen) }

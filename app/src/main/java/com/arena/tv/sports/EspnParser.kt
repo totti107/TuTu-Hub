@@ -88,7 +88,8 @@ object EspnParser {
 
     private fun athlete(c: JsonElement): Team {
         val a = c["athlete"]
-        val name = a["displayName"].str ?: a["fullName"].str ?: "?"
+        // Later rounds list players as unknown until the earlier matches are played.
+        val name = a["displayName"].str ?: a["fullName"].str ?: c["team"]["displayName"].str ?: "TBD"
         return Team(
             id = c["id"].str ?: a["id"].str ?: name, displayName = name, shortName = a["shortName"].str ?: name,
             abbreviation = "", nickname = name.substringAfterLast(' '), location = "",
@@ -139,7 +140,7 @@ object EspnParser {
             val f = c["competitors"].arr
             if (f.size < 2) return@mapNotNull null
             val w = f.indexOfFirst { it["winner"].bool }.takeIf { it >= 0 }
-            Bout(f[0]["athlete"]["displayName"].str ?: "?", f[1]["athlete"]["displayName"].str ?: "?", w,
+            Bout(f[0]["athlete"]["displayName"].str ?: "TBD", f[1]["athlete"]["displayName"].str ?: "TBD", w,
                 c["type"]["abbreviation"].str, c["status"]["result"]["displayName"].str ?: c["status"]["type"]["shortDetail"].str?.takeIf { w != null })
         }
         val type = e["status"]["type"]
@@ -274,8 +275,8 @@ object EspnParser {
         val logo = t["logo"].str ?: t["logos"][0]["href"].str
         return Team(
             id = t["id"].str ?: c["id"].str ?: "",
-            displayName = t["displayName"].str ?: t["name"].str ?: "?",
-            shortName = t["shortDisplayName"].str ?: t["displayName"].str ?: "?",
+            displayName = t["displayName"].str ?: t["name"].str ?: "TBD",
+            shortName = t["shortDisplayName"].str ?: t["displayName"].str ?: "TBD",
             abbreviation = t["abbreviation"].str ?: "",
             nickname = t["name"].str ?: "",
             location = t["location"].str ?: "",
