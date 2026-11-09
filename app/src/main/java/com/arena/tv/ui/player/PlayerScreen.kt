@@ -110,6 +110,9 @@ fun PlayerScreen(activity: PlayerActivity, player: ExoPlayer, state: PlayerUi, z
     fun poke() { activity.showControls(true); activity.lastInput.longValue = System.currentTimeMillis() }
 
     LaunchedEffect(state.channel?.id) { poke() }
+    val prefs by activity.app.prefs.collectAsState()
+    val translating = prefs.subtitleTranslate.isNotEmpty()
+    val translateStatus by activity.app.translator.status.collectAsState()
     // Hide the controls 5 seconds after the last button press or move (not while a panel is open).
     LaunchedEffect(lastTouch, state.controls, state.panel) {
         if (state.controls && state.panel == null) { delay(5000); activity.showControls(false) }
@@ -135,6 +138,8 @@ fun PlayerScreen(activity: PlayerActivity, player: ExoPlayer, state: PlayerUi, z
                 }
             },
             update = {
+                // Translated subtitles are drawn by TuTu, so the originals are hidden.
+                it.subtitleView?.visibility = if (translating) android.view.View.GONE else android.view.View.VISIBLE
                 it.resizeMode = when (state.resize) {
                     1 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     2 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
@@ -143,6 +148,8 @@ fun PlayerScreen(activity: PlayerActivity, player: ExoPlayer, state: PlayerUi, z
             },
             modifier = Modifier.fillMaxSize(),
         )
+
+        if (translating && !state.inPip) TranslatedSubtitleText(activity.subs?.text?.value, translateStatus, Streams.subtitleScale(prefs), state.controls)
 
         if (state.buffering && state.error == null) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -338,7 +345,7 @@ private fun Panel(a: PlayerActivity, s: PlayerUi, ids: List<String>) {
             "epg" -> EpgPanel(a, s.channel)
             "scores" -> ScoresPanel(a)
             "audio" -> TrackPanel(a, C.TRACK_TYPE_AUDIO, autoLabel = "Automatic")
-            "subs" -> TrackPanel(a, C.TRACK_TYPE_TEXT, autoLabel = "Off")
+            "subs" -> SubsPanel(a)
             "quality" -> TrackPanel(a, C.TRACK_TYPE_VIDEO, autoLabel = "Auto (best for your connection)")
             "sleep" -> SleepPanel(a, s.sleepAt)
             "cast" -> Column {
@@ -483,5 +490,25 @@ private fun ScorePill(g: Game, goal: Boolean) {
         } else Text(g.title ?: g.league.shortName, color = fg, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
         Text(if (goal) "  GOAL" else "  ${if (g.state == com.arena.tv.sports.GameState.POST) "FT" else g.statusText}",
             color = if (goal) Color.Black else if (g.isLive) ArenaColors.Accent else Color(0xAAFFFFFF), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+/** CC panel: the stream's subtitle tracks, plus on-device AI translation into your language. */
+@Composable
+private fun SubsPanel(a: PlayerActivity) {
+    val options = remember { a.tracks(C.TRACK_TYPE_TEXT) }
+    val prefs by a.app.prefs.collectAsState()
+    LazyColumn {
+        item { PanelRow("Off", selected = options.none { it.selected }) { a.selectTrack(C.TRACK_TYPE_TEXT, null) } }
+        if (options.isEmpty()) item { Text("This channel sends no subtitles or captions.", color = ArenaColors.Muted, modifier = Modifier.padding(16.dp)) }
+        items(options) { o -> PanelRow(o.label, selected = o.selected) { a.selectTrack(C.TRACK_TYPE_TEXT, o) } }
+        item {
+            Text("TRANSLATE (AI, ON THIS DEVICE)", color = ArenaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp))
+        }
+        item { PanelRow("Don't translate", selected = prefs.subtitleTranslate.isEmpty()) { a.setTranslate("") } }
+        items(com.arena.tv.data.SubtitleTranslator.LANGS) { (code, name) ->
+            PanelRow("Translate to $name", selected = prefs.subtitleTranslate == code) { a.setTranslate(code) }
+        }
     }
 }

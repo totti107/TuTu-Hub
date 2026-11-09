@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.collectAsState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -87,6 +88,7 @@ class VodPlayerActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         player = Streams.player(this, live = false, app.prefs.value)
+        val subs = TranslatedSubtitles(lifecycleScope, player, app).also { player.addListener(it) }
         player.addListener(object : Player.Listener {
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 if (app.prefs.value.matchFrameRate) player.videoFormat?.frameRate?.let { Streams.matchFrameRate(this@VodPlayerActivity, it) }
@@ -138,12 +140,15 @@ class VodPlayerActivity : ComponentActivity() {
                             setShowNextButton(false); setShowPreviousButton(false)
                             setShowFastForwardButton(true); setShowRewindButton(true)
                             controllerShowTimeoutMs = 3500
+                            if (subs.active) subtitleView?.visibility = android.view.View.GONE
                             subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * Streams.subtitleScale(app.prefs.value))
                             setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controlsVisible.value = v == android.view.View.VISIBLE })
                         }
                     }, modifier = Modifier.fillMaxSize())
 
                     if (!controlsVisible.value && app.prefs.value.clockAlways) CornerClock(Modifier.align(Alignment.TopEnd))
+                    if (subs.active) TranslatedSubtitleText(subs.text.value, app.translator.status.collectAsState().value,
+                        Streams.subtitleScale(app.prefs.value), controlsVisible.value)
                     AnimatedVisibility(controlsVisible.value, enter = fadeIn(), exit = fadeOut()) {
                         Row(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent))).padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically) {

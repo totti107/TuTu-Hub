@@ -144,6 +144,8 @@ fun LazyListScope.playbackItems(p: Prefs, set: ((Prefs) -> Prefs) -> Unit) {
         SetCard("Sound and subtitles") {
             ChoiceRow("Preferred audio language", "Used when a stream has more than one.", listOf("" to "Stream default") + LANGS, p.audioLang) { v -> set { it.copy(audioLang = v) } }
             ChoiceRow("Subtitles", "Turned on automatically when available in this language.", listOf("" to "Off") + LANGS, p.subtitleLang) { v -> set { it.copy(subtitleLang = v) } }
+            ChoiceRow("Translate subtitles (AI)", "Translates subtitles and closed captions on this device. Each language downloads once (about 30 MB).",
+                listOf("" to "Off") + com.arena.tv.data.SubtitleTranslator.LANGS, p.subtitleTranslate) { v -> set { it.copy(subtitleTranslate = v) } }
             ChoiceRow("Subtitle size", null, listOf("small" to "Small", "normal" to "Normal", "large" to "Large", "huge" to "Extra large"), p.subtitleSize) { v -> set { it.copy(subtitleSize = v) } }
         }
     }

@@ -82,6 +82,8 @@ data class Prefs(
     val audioLang: String = "",
     /** Preferred subtitle language ("" = off unless the stream forces them). */
     val subtitleLang: String = "",
+    /** Translate subtitles on the device into this language ("" = off). */
+    val subtitleTranslate: String = "",
     /** small, normal, large, huge */
     val subtitleSize: String = "normal",
     val keepScreenOn: Boolean = true,

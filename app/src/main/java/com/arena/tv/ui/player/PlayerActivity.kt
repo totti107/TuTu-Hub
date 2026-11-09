@@ -97,6 +97,9 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private var player: ExoPlayer? = null
+    /** On-device translated subtitles (Playback → Translate subtitles). */
+    var subs: TranslatedSubtitles? = null
+        private set
     private var ids: List<String> = emptyList()
     private var index = 0
     private var retries = 0
@@ -123,6 +126,7 @@ class PlayerActivity : ComponentActivity() {
         // Full screen takes over from the mini player (one stream at a time).
         app.miniPlayer.value = null
         createPlayer()
+        subs = TranslatedSubtitles(lifecycleScope, player!!, app).also { player!!.addListener(it) }
         handleIntent(intent)
         setContent {
             ArenaTheme {
@@ -324,6 +328,18 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         return out
+    }
+
+    /** CC panel: translate subtitles into a language ("" = off). Remembered for next time. */
+    fun setTranslate(lang: String) = lifecycleScope.launch {
+        app.settings.updatePrefs { it.copy(subtitleTranslate = lang) }
+        app.prefs.value = app.prefs.value.copy(subtitleTranslate = lang)
+        if (lang.isNotEmpty()) {
+            // Make sure subtitles are on (translation needs them).
+            player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build() }
+            subs?.ensureTextTrack()
+        } else subs?.text?.value = null
+        setPanel(null)
     }
 
     fun selectTrack(type: Int, option: TrackOption?) {

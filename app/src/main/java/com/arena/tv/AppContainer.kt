@@ -38,6 +38,7 @@ class AppContainer(context: Context) {
     val backup = com.arena.tv.data.BackupManager(settings, db)
     val reminders = com.arena.tv.data.Reminders(context.applicationContext)
     val recordings = com.arena.tv.data.Recordings(context.applicationContext)
+    val translator = com.arena.tv.data.SubtitleTranslator()
     /** Opens Settings on a given page (e.g. "RECORDING" from the Home screen). */
     val settingsPage = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
