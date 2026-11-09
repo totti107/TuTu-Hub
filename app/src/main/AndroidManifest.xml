@@ -70,6 +70,9 @@
         <service android:name=".data.LibraryService" android:exported="false" android:foregroundServiceType="dataSync" />
         <receiver android:name=".data.LibraryReceiver" android:exported="false" />
 
+        <meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.arena.tv.ui.player.CastOptionsProvider" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

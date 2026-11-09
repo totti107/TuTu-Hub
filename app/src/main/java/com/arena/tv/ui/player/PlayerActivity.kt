@@ -70,6 +70,8 @@ data class PlayerUi(
     val goals: Set<String> = emptySet(),
     /** This channel is being recorded. */
     val recording: Boolean = false,
+    /** Name of the Chromecast / Google TV it's playing on. */
+    val casting: String? = null,
 )
 
 /** One choice in the audio / subtitle / quality panels. groupIndex -1 = Auto (or Off for subtitles). */
@@ -107,6 +109,8 @@ class PlayerActivity : ComponentActivity() {
     private var guideJob: Job? = null
     private var retryJob: Job? = null
     val ui = mutableStateOf(PlayerUi())
+    /** Last remote / touch input: the controls hide 5 seconds after it. */
+    val lastInput = androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -116,6 +120,8 @@ class PlayerActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+        // Full screen takes over from the mini player (one stream at a time).
+        app.miniPlayer.value = null
         createPlayer()
         handleIntent(intent)
         setContent {
@@ -186,7 +192,84 @@ class PlayerActivity : ComponentActivity() {
 
     private fun toast(s: String) = android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_SHORT).show()
     fun resize() { ui.value = ui.value.copy(resize = (ui.value.resize + 1) % 3) }
-    fun pip() = enterPip()
+    /** Mini player: keeps this channel playing in a small window inside TuTu while you browse. */
+    fun pip() {
+        val ch = ui.value.channel ?: return
+        app.miniPlayer.value = com.arena.tv.MiniPlayback(ch.id, ids, intent.getStringExtra(EXTRA_TITLE))
+        finish()
+    }
+
+    // ---------------- Casting ----------------
+
+    private val castContext by lazy { runCatching { com.google.android.gms.cast.framework.CastContext.getSharedInstance(this) }.getOrNull() }
+    private val castListener = object : com.google.android.gms.cast.framework.SessionManagerListener<com.google.android.gms.cast.framework.CastSession> {
+        override fun onSessionStarted(session: com.google.android.gms.cast.framework.CastSession, id: String) = castStarted(session)
+        override fun onSessionResumed(session: com.google.android.gms.cast.framework.CastSession, wasSuspended: Boolean) = castStarted(session)
+        override fun onSessionEnded(session: com.google.android.gms.cast.framework.CastSession, error: Int) = castEnded()
+        override fun onSessionStartFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) { castEnded(); toast("Couldn't connect to the Cast device") }
+        override fun onSessionStarting(session: com.google.android.gms.cast.framework.CastSession) {}
+        override fun onSessionEnding(session: com.google.android.gms.cast.framework.CastSession) {}
+        override fun onSessionResuming(session: com.google.android.gms.cast.framework.CastSession, id: String) {}
+        override fun onSessionResumeFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) {}
+        override fun onSessionSuspended(session: com.google.android.gms.cast.framework.CastSession, reason: Int) {}
+    }
+
+    /** Cast button: a small panel with Chromecast and "open in another app". */
+    fun cast() = setPanel("cast")
+
+    /** Chromecast / Google TV: Android's device picker, or stop casting if already casting. */
+    fun castToDevice() {
+        val ctx = castContext ?: run { toast("Casting isn't available on this device (Google Play services needed). Try \"Open in another app\"."); return }
+        val session = ctx.sessionManager.currentCastSession
+        if (session != null && session.isConnected) { ctx.sessionManager.endCurrentSession(true); setPanel(null); return }
+        val selector = ctx.mergedSelector ?: return
+        setPanel(null)
+        runCatching {
+            androidx.mediarouter.app.MediaRouteChooserDialog(android.view.ContextThemeWrapper(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog)).apply {
+                routeSelector = selector
+            }.show()
+        }.onFailure { toast("Couldn't open the Cast device list") }
+    }
+
+    private fun castStarted(session: com.google.android.gms.cast.framework.CastSession) {
+        ui.value = ui.value.copy(casting = session.castDevice?.friendlyName ?: "TV")
+        player?.pause()
+        ui.value.channel?.let { castChannel(it) }
+    }
+
+    private fun castEnded() {
+        if (ui.value.casting == null) return
+        ui.value = ui.value.copy(casting = null)
+        ui.value.channel?.let { play(it, forceHls = false) }
+    }
+
+    /** Sends the channel to the Cast device (HLS when the provider offers it: Chromecasts play that best). */
+    private fun castChannel(ch: ChannelEntity) = lifecycleScope.launch {
+        val session = castContext?.sessionManager?.currentCastSession ?: return@launch
+        val r = runCatching {
+            val first = app.streams.resolve(ch, false)
+            if (!first.url.contains(".m3u8", true) && app.streams.hasAlternate(ch)) app.streams.resolve(ch, true) else first
+        }.getOrElse { toast("Couldn't get the stream: ${it.message}"); return@launch }
+        val hls = r.forceHls || r.url.contains(".m3u8", true)
+        val meta = com.google.android.gms.cast.MediaMetadata(com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_MOVIE).apply {
+            putString(com.google.android.gms.cast.MediaMetadata.KEY_TITLE, ui.value.now?.title ?: ch.name)
+            putString(com.google.android.gms.cast.MediaMetadata.KEY_SUBTITLE, ch.name)
+            ch.logo?.takeIf { it.startsWith("http") }?.let { addImage(com.google.android.gms.common.images.WebImage(android.net.Uri.parse(it))) }
+        }
+        val info = com.google.android.gms.cast.MediaInfo.Builder(r.url).setStreamType(com.google.android.gms.cast.MediaInfo.STREAM_TYPE_LIVE)
+            .setContentType(if (hls) "application/x-mpegURL" else "video/mp2t").setMetadata(meta).build()
+        session.remoteMediaClient?.load(com.google.android.gms.cast.MediaLoadRequestData.Builder().setMediaInfo(info).setAutoplay(true).build())
+        toast("Casting ${ch.name} to ${session.castDevice?.friendlyName ?: "your TV"}")
+    }
+
+    /** Opens the stream in another app (VLC, Web Video Caster, MX Player…), which can also cast it. */
+    fun openElsewhere() = lifecycleScope.launch {
+        val ch = ui.value.channel ?: return@launch
+        val r = runCatching { app.streams.resolve(ch, false) }.getOrElse { toast("Couldn't get the stream: ${it.message}"); return@launch }
+        val i = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(r.url), "video/*").putExtra("title", ch.name)
+        runCatching { startActivity(Intent.createChooser(i, "Open ${ch.name} with")); setPanel(null) }
+            .onFailure { toast("No other video app installed") }
+    }
     fun showControls(show: Boolean) { ui.value = ui.value.copy(controls = show, panel = if (show) ui.value.panel else null) }
     fun setPanel(panel: String?) { ui.value = ui.value.copy(panel = panel, controls = true) }
     fun togglePlay() { player?.let { if (it.isPlaying) it.pause() else it.play() } }
@@ -356,6 +439,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun play(ch: ChannelEntity, forceHls: Boolean) {
         val p = player ?: return
+        // While casting, changing channel changes what the Cast device plays.
+        if (ui.value.casting != null) { castChannel(ch); return }
         ui.value = ui.value.copy(buffering = true)
         playJob?.cancel()
         playJob = lifecycleScope.launch {
@@ -455,6 +540,7 @@ class PlayerActivity : ComponentActivity() {
     // ---- TV remote ----
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val st = ui.value
+        lastInput.longValue = System.currentTimeMillis()
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { zap(-1); return true }
@@ -504,6 +590,16 @@ class PlayerActivity : ComponentActivity() {
         // Leaving PiP (closing the small window) also lands here: stop streaming to save data / the connection slot.
         player?.pause()
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isInPictureInPictureMode) player?.stop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        castContext?.sessionManager?.addSessionManagerListener(castListener, com.google.android.gms.cast.framework.CastSession::class.java)
+    }
+
+    override fun onPause() {
+        castContext?.sessionManager?.removeSessionManagerListener(castListener, com.google.android.gms.cast.framework.CastSession::class.java)
+        super.onPause()
     }
 
     override fun onDestroy() {

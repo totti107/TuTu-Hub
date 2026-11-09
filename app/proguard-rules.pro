@@ -11,3 +11,6 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# Chromecast: the options provider is only named in the manifest.
+-keep class com.arena.tv.ui.player.CastOptionsProvider { *; }

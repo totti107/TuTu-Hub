@@ -69,6 +69,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.foundation.border
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -103,13 +106,13 @@ import kotlinx.coroutines.flow.first
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(activity: PlayerActivity, player: ExoPlayer, state: PlayerUi, zapIds: List<String>) {
-    var lastTouch by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    fun poke() { activity.showControls(true); lastTouch = System.currentTimeMillis() }
+    val lastTouch = activity.lastInput.longValue
+    fun poke() { activity.showControls(true); activity.lastInput.longValue = System.currentTimeMillis() }
 
     LaunchedEffect(state.channel?.id) { poke() }
-    // Hide the controls after a while (not while a panel is open).
+    // Hide the controls 5 seconds after the last button press or move (not while a panel is open).
     LaunchedEffect(lastTouch, state.controls, state.panel) {
-        if (state.controls && state.panel == null) { delay(6000); activity.showControls(false) }
+        if (state.controls && state.panel == null) { delay(5000); activity.showControls(false) }
     }
 
     Box(
@@ -163,7 +166,7 @@ fun PlayerScreen(activity: PlayerActivity, player: ExoPlayer, state: PlayerUi, z
             ScoreOverlay(state.scores, state.goals, LocalContext.current.app.prefs.value.scoreStyle == "compact", Modifier.align(Alignment.TopStart))
         if (!state.inPip) {
             AnimatedVisibility(state.controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
-                Controls(activity, state) { lastTouch = System.currentTimeMillis() }
+                Controls(activity, state) { activity.lastInput.longValue = System.currentTimeMillis() }
             }
             AnimatedVisibility(state.panel != null, enter = slideInHorizontally { it }, exit = slideOutHorizontally { it },
                 modifier = Modifier.align(Alignment.CenterEnd)) {
@@ -195,66 +198,116 @@ private fun Controls(a: PlayerActivity, s: PlayerUi, touched: () -> Unit) {
             Text(Time.clock(now), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
         }
 
-        // Bottom: now / next, progress, channel + buttons.
+        // Bottom: now / up next, progress, channel + the button dock.
+        var label by remember { mutableStateOf<String?>(null) }
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000), Color(0xEE000000))))
-            .padding(start = 28.dp, end = 28.dp, top = 40.dp, bottom = 18.dp)) {
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000), Color(0xF2000000))))
+            .padding(start = 32.dp, end = 32.dp, top = 56.dp, bottom = 20.dp)) {
             val cur = s.now
-            Row {
+            Row(verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f)) {
-                    Text(cur?.title ?: s.channel?.name ?: "", color = Color.White, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    cur?.let { Text("Started at ${Time.clock(it.start)}", color = Color(0xAAFFFFFF), fontSize = 14.sp) }
+                    Text("NOW", color = ArenaColors.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    Text(cleanTitle(cur?.title) ?: s.channel?.name ?: "", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    cur?.let { Text("Started at ${Time.clock(it.start)}", color = Color(0xB3FFFFFF), fontSize = 14.sp) }
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    s.next?.let { Text("Next: ${it.title}", color = Color(0xAAFFFFFF), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 420.dp)) }
-                    cur?.let { Text("Ends ${Time.clock(it.stop)}", color = Color(0xAAFFFFFF), fontSize = 14.sp) }
+                Spacer(Modifier.width(24.dp))
+                Column(horizontalAlignment = Alignment.End, modifier = Modifier.widthIn(max = 440.dp)) {
+                    s.next?.let {
+                        Text("UP NEXT", color = Color(0x99FFFFFF), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                        Text(cleanTitle(it.title) ?: "", color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    cur?.let { Text("Ends ${Time.clock(it.stop)}", color = Color(0xB3FFFFFF), fontSize = 14.sp) }
                 }
             }
-            LinearProgressIndicator(progress = { cur?.let { Time.progress(it.start, it.stop) } ?: 0f },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp).height(3.dp).clip(CircleShape),
-                color = Color.White, trackColor = Color(0x44FFFFFF), drawStopIndicator = {})
+            Box(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 14.dp).height(4.dp).clip(CircleShape).background(Color(0x33FFFFFF))) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(cur?.let { Time.progress(it.start, it.stop) } ?: 0f).clip(CircleShape).background(Color.White))
+            }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                s.channel?.let { Logo(it.logo, it.name, 44.dp) }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.widthIn(max = 300.dp)) {
-                    Text("${s.index + 1}  ${s.channel?.name ?: ""}", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Medium,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = a::goLive)) {
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(if (s.behindLive == null) ArenaColors.Accent else Color(0x99FFFFFF)))
-                        Text(if (s.behindLive == null) "  LIVE" else "  -${s.behindLive}s", color = Color.White, fontSize = 14.sp)
+            Row(verticalAlignment = Alignment.Bottom) {
+                // Channel
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 6.dp)) {
+                    s.channel?.let { Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(Color(0x1FFFFFFF)).padding(5.dp)) { Logo(it.logo, it.name, 38.dp) } }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.widthIn(max = 260.dp)) {
+                        Text("${s.index + 1}  ${s.channel?.name ?: ""}", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = a::goLive)) {
+                            Box(Modifier.size(8.dp).clip(CircleShape).background(if (s.behindLive == null) ArenaColors.Live else Color(0x99FFFFFF)))
+                            Text(if (s.behindLive == null) "  LIVE" else "  -${s.behindLive}s · go live", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
-                Spacer(Modifier.width(14.dp))
-                Box(Modifier.width(1.dp).height(40.dp).background(Color(0x44FFFFFF)))
-                Spacer(Modifier.width(10.dp))
-                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    fun t(f: () -> Unit): () -> Unit = { touched(); f() }
-                    CtrlButton(Icons.Rounded.Replay10, "Back 10 seconds", enabled = s.seekable, onClick = t { a.seekBy(-10_000) })
-                    CtrlButton(if (s.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (s.playing) "Pause" else "Play", primary = true,
-                        modifier = Modifier.focusRequester(playFocus), onClick = t(a::togglePlay))
-                    CtrlButton(Icons.Rounded.Forward10, "Forward 10 seconds", enabled = s.seekable, onClick = t { a.seekBy(10_000) })
-                    Box(Modifier.width(1.dp).height(40.dp).background(Color(0x44FFFFFF)))
-                    CtrlButton(Icons.Rounded.FastRewind, "Previous channel", onClick = t(a::lastChannel))
-                    CtrlButton(Icons.AutoMirrored.Rounded.List, "Channels", onClick = t { a.setPanel("channels") })
-                    CtrlButton(Icons.Rounded.FiberManualRecord, if (s.recording) "Stop recording" else "Record", tint = if (s.recording) ArenaColors.Live else Color.White,
-                        onClick = t { a.toggleRecord() })
-                    CtrlButton(Icons.Rounded.EmojiEvents, "Live scores", onClick = t { a.setPanel("scores") })
-                    CtrlButton(if (s.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder, "Favorite", tint = if (s.favorite) ArenaColors.Gold else Color.White,
-                        onClick = t(a::favorite))
-                    CtrlText("CC", "Subtitles", onClick = t { a.setPanel("subs") })
-                    CtrlText("EPG", "TV guide", onClick = t { a.setPanel("epg") })
-                    CtrlButton(Icons.Rounded.History, "Recently watched", onClick = t { a.setPanel("recent") })
-                    CtrlButton(Icons.Rounded.GraphicEq, "Audio track", onClick = t { a.setPanel("audio") })
-                    CtrlText(s.badges.firstOrNull { it in setOf("4K", "FHD", "HD", "SD") } ?: "Auto", "Video quality", onClick = t { a.setPanel("quality") })
-                    CtrlButton(Icons.Rounded.AspectRatio, "Zoom", onClick = t(a::resize))
-                    CtrlButton(Icons.Rounded.PictureInPictureAlt, "Picture in picture", onClick = t(a::pip))
-                    CtrlButton(Icons.Rounded.Bedtime, "Sleep timer", tint = if (s.sleepAt != null) ArenaColors.Accent else Color.White, onClick = t { a.setPanel("sleep") })
+                Spacer(Modifier.width(20.dp))
+                // Button dock, with the focused button's name above it.
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(label ?: " ", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 6.dp))
+                    Row(
+                        Modifier.clip(RoundedCornerShape(22.dp)).background(Color(0xD9141518)).border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(22.dp))
+                            .horizontalScroll(rememberScrollState()).padding(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        fun t(f: () -> Unit): () -> Unit = { touched(); f() }
+                        val focus: (String) -> Unit = { label = it; touched() }
+                        Dock(Icons.Rounded.Replay10, "Back 10 seconds", focus, enabled = s.seekable, onClick = t { a.seekBy(-10_000) })
+                        Dock(if (s.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (s.playing) "Pause" else "Play", focus, primary = true,
+                            modifier = Modifier.focusRequester(playFocus), onClick = t(a::togglePlay))
+                        Dock(Icons.Rounded.Forward10, "Forward 10 seconds", focus, enabled = s.seekable, onClick = t { a.seekBy(10_000) })
+                        DockDivider()
+                        Dock(Icons.Rounded.FastRewind, "Previous channel", focus, onClick = t(a::lastChannel))
+                        Dock(Icons.AutoMirrored.Rounded.List, "Channels", focus, onClick = t { a.setPanel("channels") })
+                        DockText("EPG", "TV guide", focus, onClick = t { a.setPanel("epg") })
+                        Dock(Icons.Rounded.EmojiEvents, "Live scores", focus, onClick = t { a.setPanel("scores") })
+                        Dock(if (s.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder, if (s.favorite) "Remove from favorites" else "Add to favorites", focus,
+                            tint = if (s.favorite) ArenaColors.Gold else Color.White, onClick = t(a::favorite))
+                        Dock(Icons.Rounded.FiberManualRecord, if (s.recording) "Stop recording" else "Record", focus,
+                            tint = if (s.recording) ArenaColors.Live else Color.White, onClick = t { a.toggleRecord() })
+                        Dock(Icons.Rounded.History, "Recently watched", focus, onClick = t { a.setPanel("recent") })
+                        DockDivider()
+                        DockText("CC", "Subtitles", focus, onClick = t { a.setPanel("subs") })
+                        Dock(Icons.Rounded.GraphicEq, "Audio track", focus, onClick = t { a.setPanel("audio") })
+                        DockText(s.badges.firstOrNull { it in setOf("4K", "FHD", "HD", "SD") } ?: "Auto", "Video quality", focus, onClick = t { a.setPanel("quality") })
+                        Dock(Icons.Rounded.AspectRatio, "Zoom", focus, onClick = t(a::resize))
+                        DockDivider()
+                        Dock(Icons.Rounded.Cast, if (s.casting != null) "Casting to ${s.casting}" else "Cast", focus,
+                            tint = if (s.casting != null) ArenaColors.Accent else Color.White, onClick = t(a::cast))
+                        Dock(Icons.Rounded.PictureInPictureAlt, "Mini player", focus, onClick = t(a::pip))
+                        Dock(Icons.Rounded.Bedtime, "Sleep timer", focus, tint = if (s.sleepAt != null) ArenaColors.Accent else Color.White, onClick = t { a.setPanel("sleep") })
+                    }
                 }
             }
         }
+    }
+}
+
+/** Guide titles sometimes carry "ᴸᶦᵛᵉ" / "ᴺᵉʷ" tags: shown as plain text instead. */
+private fun cleanTitle(t: String?): String? = t?.replace(Regex("""\s*[\u1D2C-\u1D6A\u1D9C-\u1DBF\u02B0-\u02FF\u2070-\u209F]{2,}\s*"""), " ")?.trim()?.ifEmpty { t }
+
+@Composable
+private fun DockDivider() = Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(28.dp).background(Color(0x33FFFFFF)))
+
+@Composable
+private fun Dock(icon: ImageVector, desc: String, onFocus: (String) -> Unit, modifier: Modifier = Modifier, primary: Boolean = false,
+                 enabled: Boolean = true, tint: Color = Color.White, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val bg = when { focused -> Color.White; primary -> Color(0x33FFFFFF); else -> Color.Transparent }
+    Box(
+        modifier.size(if (primary) 54.dp else 48.dp).clip(RoundedCornerShape(16.dp)).background(bg)
+            .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus(desc) }
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, desc, tint = when { focused -> Color.Black; !enabled -> Color(0x55FFFFFF); else -> tint }, modifier = Modifier.size(if (primary) 30.dp else 26.dp))
+    }
+}
+
+@Composable
+private fun DockText(text: String, desc: String, onFocus: (String) -> Unit, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Box(Modifier.height(48.dp).widthIn(min = 48.dp).clip(RoundedCornerShape(16.dp)).background(if (focused) Color.White else Color.Transparent)
+        .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus(desc) }
+        .clickable(onClick = onClick).padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+        Text(text, color = if (focused) Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
     }
 }
 
@@ -264,23 +317,7 @@ private fun Badge(text: String) {
         modifier = Modifier.padding(end = 8.dp).clip(RoundedCornerShape(8.dp)).background(Color(0x55FFFFFF)).padding(horizontal = 10.dp, vertical = 4.dp))
 }
 
-@Composable
-private fun CtrlButton(icon: ImageVector, desc: String, modifier: Modifier = Modifier, primary: Boolean = false, enabled: Boolean = true,
-                       tint: Color = Color.White, onClick: () -> Unit) {
-    Box(
-        modifier.size(54.dp).clip(RoundedCornerShape(14.dp)).background(if (primary) Color.White else Color(0x33FFFFFF))
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Icon(icon, desc, tint = if (primary) Color.Black else if (enabled) tint else Color(0x55FFFFFF), modifier = Modifier.size(28.dp)) }
-}
 
-@Composable
-private fun CtrlText(text: String, desc: String, onClick: () -> Unit) {
-    Box(Modifier.height(54.dp).widthIn(min = 54.dp).clip(RoundedCornerShape(14.dp)).background(Color(0x33FFFFFF)).clickable(onClick = onClick)
-        .padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-        Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-    }
-}
 
 // ------------------------------------------------------------ side panels
 
@@ -288,7 +325,7 @@ private fun CtrlText(text: String, desc: String, onClick: () -> Unit) {
 private fun Panel(a: PlayerActivity, s: PlayerUi, ids: List<String>) {
     val title = when (s.panel) {
         "channels" -> "Channels"; "epg" -> "TV guide"; "recent" -> "Recently watched"; "scores" -> "Live scores"
-        "audio" -> "Audio"; "subs" -> "Subtitles"; "quality" -> "Video quality"; "sleep" -> "Sleep timer"; else -> ""
+        "audio" -> "Audio"; "subs" -> "Subtitles"; "quality" -> "Video quality"; "sleep" -> "Sleep timer"; "cast" -> "Cast"; else -> ""
     }
     Column(Modifier.width(380.dp).fillMaxHeight().background(Color(0xF00B0B0D)).padding(vertical = 12.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -304,6 +341,13 @@ private fun Panel(a: PlayerActivity, s: PlayerUi, ids: List<String>) {
             "subs" -> TrackPanel(a, C.TRACK_TYPE_TEXT, autoLabel = "Off")
             "quality" -> TrackPanel(a, C.TRACK_TYPE_VIDEO, autoLabel = "Auto (best for your connection)")
             "sleep" -> SleepPanel(a, s.sleepAt)
+            "cast" -> Column {
+                PanelRow(if (s.casting != null) "Stop casting to ${s.casting}" else "Chromecast / Google TV",
+                    "Plays this channel on a TV with Chromecast built in") { a.castToDevice() }
+                PanelRow("Open in another app", "VLC, Web Video Caster, MX Player… (they can cast too)") { a.openElsewhere() }
+                Text("Some providers only allow their streams on one device or need special settings; if a channel won't cast, try another app.",
+                    color = ArenaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(16.dp))
+            }
         }
     }
 }

@@ -80,7 +80,22 @@ private enum class Section(val route: String, val label: String, val icon: Image
 
 private var startRoute = "home"
 
+/** A channel playing in the mini player while browsing. */
+data class MiniPlayback(val channelId: String, val ids: List<String>, val title: String?)
+private var miniFocusRequester: androidx.compose.ui.focus.FocusRequester? = null
+
 class MainActivity : ComponentActivity() {
+    /** Menu / Info / Play-Pause on the remote jump to the mini player (when one is open). */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && app.miniPlayer.value != null && event.keyCode in setOf(
+                android.view.KeyEvent.KEYCODE_MENU, android.view.KeyEvent.KEYCODE_INFO, android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                android.view.KeyEvent.KEYCODE_MEDIA_PLAY, android.view.KeyEvent.KEYCODE_WINDOW)) {
+            runCatching { miniFocusRequester?.requestFocus() }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -121,6 +136,9 @@ private fun ArenaRoot() {
     val compactChrome = wide && LocalConfiguration.current.screenWidthDp < 1150
     val context = androidx.compose.ui.platform.LocalContext.current
     val decimalOdds by remember { context.app.settings.flow.map { it.decimalOdds } }.collectAsState(initial = true)
+    val mini by context.app.miniPlayer.collectAsState()
+    val miniFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    miniFocusRequester = miniFocus
     CompositionLocalProvider(LocalWide provides wide, LocalSectionNav provides sectionNav, com.arena.tv.ui.components.LocalCompactChrome provides compactChrome,
         com.arena.tv.ui.sports.LocalDecimalOdds provides decimalOdds) {
         if (wide) {
@@ -143,6 +161,11 @@ private fun ArenaRoot() {
                     }
                 },
             ) { pad -> Box(Modifier.padding(pad)) { Graph(nav) { go(Section.SETTINGS) } } }
+        }
+        mini?.let { m ->
+            Box(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp), contentAlignment = Alignment.BottomEnd) {
+                com.arena.tv.ui.components.MiniPlayer(m, miniFocus)
+            }
         }
     }
 }

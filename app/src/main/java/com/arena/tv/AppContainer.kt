@@ -43,6 +43,8 @@ class AppContainer(context: Context) {
 
     /** Latest playback/browsing options, readable without waiting (players read them when they start). */
     val prefs = kotlinx.coroutines.flow.MutableStateFlow(com.arena.tv.data.Prefs())
+    /** The channel in the mini player (bottom corner while browsing), if any. */
+    val miniPlayer = kotlinx.coroutines.flow.MutableStateFlow<com.arena.tv.MiniPlayback?>(null)
     /** Home screen shortcuts into Live TV: "favorites" or "guide". */
     val liveRequest = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
