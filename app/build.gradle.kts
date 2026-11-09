@@ -7,7 +7,7 @@ plugins {
     id("app.cash.paparazzi")
 }
 
-val appVersion = "3.13.0"
+val appVersion = "3.13.1"
 
 android {
     namespace = "com.arena.tv"
@@ -23,6 +23,8 @@ android {
         versionCode = 1000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)
         versionName = appVersion
         vectorDrawables { useSupportLibrary = true }
+        // Phones and TVs use ARM chips; leaving out x86 halves the app (the translator's engine is large).
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
 
     // Fixed keystore so every build (local or GitHub) can update the installed app.
