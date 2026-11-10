@@ -108,6 +108,10 @@ class PlayerActivity : ComponentActivity() {
     private var triedHls = false
     /** Tried the other stream format (TS <-> HLS) for this channel ("Auto"). */
     private var triedAlt = false
+    /** Channels whose captions couldn't be read: played without looking for them. */
+    private val badCaptions = HashSet<String>()
+    /** Subtitles were switched off only because of one channel's bad captions: switched back on for the next channel. */
+    private var captionsOffByUs = false
     private var playJob: Job? = null
     private var lastIndex: Int? = null
     private var sleepJob: Job? = null
@@ -470,7 +474,8 @@ class PlayerActivity : ComponentActivity() {
         val ds = OkHttpDataSource.Factory(app.http)
             .setUserAgent(ch.userAgent?.ifBlank { null } ?: "Mozilla/5.0 (Linux; Android) TuTuTV/1.0")
         ch.referrer?.let { ds.setDefaultRequestProperties(mapOf("Referer" to it)) }
-        return DefaultMediaSourceFactory(this, Streams.extractors()).setDataSourceFactory(ds)
+        val captions = app.prefs.value.subtitleTranslate.isNotEmpty() && ch.id !in badCaptions
+        return DefaultMediaSourceFactory(this, Streams.extractors(captions)).setDataSourceFactory(ds)
     }
 
     private fun load() {
@@ -482,6 +487,10 @@ class PlayerActivity : ComponentActivity() {
             }
             triedHls = false
             triedAlt = false
+            if (captionsOffByUs && id !in badCaptions) {
+                captionsOffByUs = false
+                player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build() }
+            }
             play(ch, forceHls = false)
             val fav = id in app.db.user().favoriteIds().first()
             ui.value = ui.value.copy(channel = ch, index = index, total = ids.size, favorite = fav, error = null, now = null, next = null, videoInfo = null)
@@ -532,6 +541,19 @@ class PlayerActivity : ComponentActivity() {
 
     private fun handleError(e: PlaybackException) {
         val ch = ui.value.channel
+        // The subtitle / caption part failed (not the picture or sound): carry on without subtitles.
+        val failedType = (e as? androidx.media3.exoplayer.ExoPlaybackException)
+            ?.takeIf { it.type == androidx.media3.exoplayer.ExoPlaybackException.TYPE_RENDERER }
+            ?.let { runCatching { player?.getRendererType(it.rendererIndex) }.getOrNull() }
+        val decoding = e.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED || e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+        if (ch != null && (failedType == androidx.media3.common.C.TRACK_TYPE_TEXT || (decoding && ch.id !in badCaptions && app.prefs.value.subtitleTranslate.isNotEmpty()))) {
+            badCaptions += ch.id
+            captionsOffByUs = true
+            player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true).build() }
+            toast("This channel's captions couldn't be read, so subtitles are off for it")
+            play(ch, forceHls = triedHls)
+            return
+        }
         // Some providers serve HLS from URLs without an .m3u8 extension: try again as HLS once.
         if (ch != null && !triedHls && hasCause<UnrecognizedInputFormatException>(e)) {
             triedHls = true
@@ -557,7 +579,12 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Can't reach the stream. Check your connection."
-            PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_DECODER_INIT_FAILED -> "This device can't decode this stream."
+            PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ->
+                "This device can't decode this stream" + when (failedType) {
+                    androidx.media3.common.C.TRACK_TYPE_VIDEO -> " (picture: the TV doesn't support this video format)."
+                    androidx.media3.common.C.TRACK_TYPE_AUDIO -> " (sound: the TV doesn't support this audio format)."
+                    else -> "."
+                }
             else -> "Playback failed (${e.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')})."
         }
         scheduleRetry(msg)
