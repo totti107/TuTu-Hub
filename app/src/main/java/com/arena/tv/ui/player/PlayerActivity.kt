@@ -443,9 +443,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun createPlayer() {
         val prefs = app.prefs.value
-        val renderers = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-            .setEnableDecoderFallback(true)
+        val renderers = Streams.renderers(this)
         player = ExoPlayer.Builder(this, renderers)
             .setLoadControl(Streams.loadControl(live = true, buffer = prefs.buffer))
             .build().apply {

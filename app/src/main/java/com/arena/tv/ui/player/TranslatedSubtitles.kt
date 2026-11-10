@@ -67,8 +67,11 @@ class TranslatedSubtitles(private val scope: CoroutineScope, private val player:
         val params = player.trackSelectionParameters
         if (C.TRACK_TYPE_TEXT in params.disabledTrackTypes) return
         if (tracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }) return
-        val g = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_TEXT && it.isSupported } ?: return
-        val i = (0 until g.length).firstOrNull { g.isTrackSupported(it) } ?: return
+        fun textBased(m: String?) = m != null && m !in setOf(androidx.media3.common.MimeTypes.APPLICATION_PGS, androidx.media3.common.MimeTypes.APPLICATION_VOBSUB,
+            androidx.media3.common.MimeTypes.APPLICATION_DVBSUBS)
+        val g = tracks.groups.firstOrNull { gr -> gr.type == C.TRACK_TYPE_TEXT && gr.isSupported &&
+            (0 until gr.length).any { gr.isTrackSupported(it) && textBased(gr.getTrackFormat(it).sampleMimeType ?: gr.getTrackFormat(it).codecs) } } ?: return
+        val i = (0 until g.length).firstOrNull { g.isTrackSupported(it) && textBased(g.getTrackFormat(it).sampleMimeType ?: g.getTrackFormat(it).codecs) } ?: return
         player.trackSelectionParameters = params.buildUpon().setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i)).build()
     }
 }

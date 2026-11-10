@@ -82,6 +82,7 @@ class VodPlayerActivity : ComponentActivity() {
     private val ui = mutableStateOf(VodUi())
     private val lastInput = androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis())
     private lateinit var subs: TranslatedSubtitles
+    private var textOffAfterError = false
     private val nextUp = mutableStateOf<EpisodeEntity?>(null)
     private val error = mutableStateOf<String?>(null)
 
@@ -108,7 +109,23 @@ class VodPlayerActivity : ComponentActivity() {
                 if (state == Player.STATE_ENDED) { saveProgress(); scrobble("stop"); scrobbling = false; next()?.let(::playEpisode) ?: finish() }
             }
             override fun onPlayerError(e: PlaybackException) {
-                error.value = "Can't play this title (${e.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')})."
+                val failed = (e as? androidx.media3.exoplayer.ExoPlaybackException)
+                    ?.takeIf { it.type == androidx.media3.exoplayer.ExoPlaybackException.TYPE_RENDERER }?.let { runCatching { player.getRendererType(it.rendererIndex) }.getOrNull() }
+                val subtitleTrouble = failed == androidx.media3.common.C.TRACK_TYPE_TEXT ||
+                    (e.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED && !textOffAfterError && player.currentTracks.groups.any { it.type == androidx.media3.common.C.TRACK_TYPE_TEXT && it.isSelected })
+                if (subtitleTrouble && !textOffAfterError) {
+                    // The subtitles can't be read: carry on without them, from the same spot.
+                    textOffAfterError = true
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true).build()
+                    player.prepare(); player.play()
+                    android.widget.Toast.makeText(this@VodPlayerActivity, "These subtitles couldn't be read, so they're off for this title", android.widget.Toast.LENGTH_LONG).show()
+                    return
+                }
+                error.value = "Can't play this title (${e.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')})" + when (failed) {
+                    androidx.media3.common.C.TRACK_TYPE_VIDEO -> ": this device doesn't support its video format."
+                    androidx.media3.common.C.TRACK_TYPE_AUDIO -> ": this device doesn't support its audio format. Try another audio track (Audio button)."
+                    else -> "."
+                }
             }
         })
         val file = intent.getStringExtra("file")

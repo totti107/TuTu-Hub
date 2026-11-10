@@ -18,12 +18,21 @@ import okhttp3.OkHttpClient
 @UnstableApi
 object Streams {
     fun player(context: Context, live: Boolean, prefs: Prefs = Prefs()): ExoPlayer {
-        val renderers = DefaultRenderersFactory(context)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-            .setEnableDecoderFallback(true)
+        val renderers = renderers(context)
         return ExoPlayer.Builder(context, renderers).setLoadControl(loadControl(live, prefs.buffer)).build()
             .also { applyLanguages(it, prefs) }
     }
+
+    /**
+     * Decoders for picture, sound and subtitles. Subtitles in older formats (e.g. some captions and SRT inside
+     * streams) are read by the "legacy" decoder: without it, they stop the whole video with "decoding failed".
+     */
+    fun renderers(context: Context): DefaultRenderersFactory = object : DefaultRenderersFactory(context) {
+        override fun buildTextRenderers(context: Context, output: androidx.media3.exoplayer.text.TextOutput, outputLooper: android.os.Looper,
+                                        extensionRendererMode: Int, out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>) {
+            out.add(androidx.media3.exoplayer.text.TextRenderer(output, outputLooper).apply { experimentalSetLegacyDecodingEnabled(true) })
+        }
+    }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER).setEnableDecoderFallback(true)
 
     /** Settings → Playback → Buffer: low starts fastest, high rides out weak connections. */
     fun loadControl(live: Boolean, buffer: String): DefaultLoadControl {
