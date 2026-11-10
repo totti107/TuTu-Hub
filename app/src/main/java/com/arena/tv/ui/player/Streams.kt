@@ -17,8 +17,8 @@ import okhttp3.OkHttpClient
 /** Shared ExoPlayer setup for the full-screen player and the inline previews. */
 @UnstableApi
 object Streams {
-    fun player(context: Context, live: Boolean, prefs: Prefs = Prefs()): ExoPlayer {
-        val renderers = renderers(context)
+    fun player(context: Context, live: Boolean, prefs: Prefs = Prefs(), softwareFirst: Boolean = false): ExoPlayer {
+        val renderers = renderers(context, softwareFirst)
         return ExoPlayer.Builder(context, renderers).setLoadControl(loadControl(live, prefs.buffer)).build()
             .also { applyLanguages(it, prefs) }
     }
@@ -27,12 +27,34 @@ object Streams {
      * Decoders for picture, sound and subtitles. Subtitles in older formats (e.g. some captions and SRT inside
      * streams) are read by the "legacy" decoder: without it, they stop the whole video with "decoding failed".
      */
-    fun renderers(context: Context): DefaultRenderersFactory = object : DefaultRenderersFactory(context) {
+    /** Small preview players (Live TV preview, mini player): stopped before full screen starts so it gets the video decoder. */
+    private val previews = java.util.Collections.newSetFromMap(java.util.WeakHashMap<ExoPlayer, Boolean>())
+    fun registerPreview(p: ExoPlayer) { previews += p }
+    fun stopPreviews() { previews.toList().forEach { runCatching { it.stop(); it.clearMediaItems() } } }
+
+    /** "video/avc · c2.mtk.avc.decoder" — which decoder failed, for the error message. */
+    fun decoderDetail(e: Throwable?): String? {
+        var c = e
+        while (c != null) {
+            if (c is androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.DecoderInitializationException)
+                return listOfNotNull(c.mimeType, c.codecInfo?.name).joinToString(" · ").ifEmpty { null }
+            if (c is androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException) return c.codecInfo?.let { "${it.mimeType} · ${it.name}" }
+            c = c.cause
+        }
+        return null
+    }
+
+    /** Decoders: hardware first normally; [softwareFirst] when the TV's hardware decoder refuses (slower but reliable). */
+    fun renderers(context: Context, softwareFirst: Boolean = false): DefaultRenderersFactory = object : DefaultRenderersFactory(context) {
         override fun buildTextRenderers(context: Context, output: androidx.media3.exoplayer.text.TextOutput, outputLooper: android.os.Looper,
                                         extensionRendererMode: Int, out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>) {
             out.add(androidx.media3.exoplayer.text.TextRenderer(output, outputLooper).apply { experimentalSetLegacyDecodingEnabled(true) })
         }
-    }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER).setEnableDecoderFallback(true)
+    }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER).setEnableDecoderFallback(true).apply {
+        if (softwareFirst) setMediaCodecSelector { mime, secure, tunneling ->
+            androidx.media3.exoplayer.mediacodec.MediaCodecUtil.getDecoderInfos(mime, secure, tunneling).sortedBy { !it.softwareOnly }
+        }
+    }
 
     /** Settings → Playback → Buffer: low starts fastest, high rides out weak connections. */
     fun loadControl(live: Boolean, buffer: String): DefaultLoadControl {

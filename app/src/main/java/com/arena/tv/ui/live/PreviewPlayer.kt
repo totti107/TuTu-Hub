@@ -40,7 +40,7 @@ import com.arena.tv.ui.player.Streams
 @Composable
 fun PreviewPlayer(channel: ChannelEntity?, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val player = remember { Streams.player(context, live = true).apply { volume = 1f } }
+    val player = remember { Streams.player(context, live = true).apply { volume = 1f; Streams.registerPreview(this) } }
     var state by remember { mutableStateOf("idle") }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 

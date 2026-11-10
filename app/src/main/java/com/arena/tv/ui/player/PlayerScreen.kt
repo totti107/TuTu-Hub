@@ -139,6 +139,7 @@ fun PlayerScreen(activity: PlayerActivity, player: ExoPlayer, state: PlayerUi, z
                 }
             },
             update = {
+                if (it.player !== player) it.player = player
                 // Translated subtitles are drawn by TuTu, so the originals are hidden.
                 it.subtitleView?.visibility = if (translating) android.view.View.GONE else android.view.View.VISIBLE
                 it.resizeMode = when (state.resize) {

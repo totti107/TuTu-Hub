@@ -83,6 +83,11 @@ class VodPlayerActivity : ComponentActivity() {
     private val lastInput = androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis())
     private lateinit var subs: TranslatedSubtitles
     private var textOffAfterError = false
+    private var decoderRetried = false
+    private var currentSource: androidx.media3.exoplayer.source.MediaSource? = null
+    private var softwareDecoders = false
+    private val playerRef = mutableStateOf<ExoPlayer?>(null)
+    private lateinit var events: Player.Listener
     private val nextUp = mutableStateOf<EpisodeEntity?>(null)
     private val error = mutableStateOf<String?>(null)
 
@@ -94,9 +99,11 @@ class VodPlayerActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+        Streams.stopPreviews()
         player = Streams.player(this, live = false, app.prefs.value)
         subs = TranslatedSubtitles(lifecycleScope, player, app).also { player.addListener(it) }
-        player.addListener(object : Player.Listener {
+        playerRef.value = player
+        events = object : Player.Listener {
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 if (app.prefs.value.matchFrameRate) player.videoFormat?.frameRate?.let { Streams.matchFrameRate(this@VodPlayerActivity, it) }
             }
@@ -121,13 +128,24 @@ class VodPlayerActivity : ComponentActivity() {
                     android.widget.Toast.makeText(this@VodPlayerActivity, "These subtitles couldn't be read, so they're off for this title", android.widget.Toast.LENGTH_LONG).show()
                     return
                 }
+                // The TV's picture / sound decoder refused: retry once, then switch to the software decoders.
+                val decoding = e.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED || e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+                if (decoding && failed != androidx.media3.common.C.TRACK_TYPE_TEXT) {
+                    if (!decoderRetried) {
+                        decoderRetried = true; Streams.stopPreviews()
+                        lifecycleScope.launch { delay(800); player.prepare(); player.play() }
+                        return
+                    }
+                    if (!softwareDecoders) { softwareDecoders = true; rebuildWithSoftware(); return }
+                }
                 error.value = "Can't play this title (${e.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')})" + when (failed) {
                     androidx.media3.common.C.TRACK_TYPE_VIDEO -> ": this device doesn't support its video format."
                     androidx.media3.common.C.TRACK_TYPE_AUDIO -> ": this device doesn't support its audio format. Try another audio track (Audio button)."
                     else -> "."
-                }
+                } + (Streams.decoderDetail(e)?.let { "\n$it" } ?: "")
             }
-        })
+        }
+        player.addListener(events)
         val file = intent.getStringExtra("file")
         if (file != null) {
             // A recording saved on this device.
@@ -174,6 +192,7 @@ class VodPlayerActivity : ComponentActivity() {
                             subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * Streams.subtitleScale(app.prefs.value))
                         }
                     }, update = {
+                        playerRef.value?.let { p -> if (it.player !== p) it.player = p }
                         it.subtitleView?.visibility = if (translating) android.view.View.GONE else android.view.View.VISIBLE
                         it.resizeMode = when (st.resize) { 1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM; 2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                             else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT }
@@ -182,14 +201,14 @@ class VodPlayerActivity : ComponentActivity() {
                     if (!st.controls && prefs.clockAlways) CornerClock(Modifier.align(Alignment.TopEnd))
                     if (translating) TranslatedSubtitleText(subs.text.value, app.translator.status.collectAsState().value, Streams.subtitleScale(prefs), st.controls)
                     AnimatedVisibility(st.controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
-                        VodControls(player, st, title.value, subtitle.value, hasNext = next() != null,
+                        VodControls(playerRef.value ?: player, st, title.value, subtitle.value, hasNext = next() != null,
                             onBack = { finish() }, onTogglePlay = { if (player.isPlaying) player.pause() else player.play() },
                             onSeek = { d -> player.seekTo((player.currentPosition + d).coerceAtLeast(0)) }, onRestart = { player.seekTo(0); player.play() },
                             onNext = { next()?.let(::playEpisode) }, onPanel = { p -> ui.value = ui.value.copy(panel = p, controls = true) },
                             onResize = { ui.value = ui.value.copy(resize = (ui.value.resize + 1) % 3) },
                             touched = { lastInput.longValue = System.currentTimeMillis() })
                     }
-                    VodPanel(app, player, st.panel, onClose = { ui.value = ui.value.copy(panel = null) },
+                    VodPanel(app, playerRef.value ?: player, st.panel, onClose = { ui.value = ui.value.copy(panel = null) },
                         onPick = { type, o -> TrackTools.select(player, type, o); ui.value = ui.value.copy(panel = null) }) { lang -> setTranslate(lang) }
                     nextUp.value?.let { n ->
                         if (!st.controls) Box(Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 40.dp)) {
@@ -203,6 +222,21 @@ class VodPlayerActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Same title, same spot, with the software decoders (when the TV's hardware decoder refuses). */
+    private fun rebuildWithSoftware() {
+        val item = player.currentMediaItem ?: return
+        val source = currentSource
+        val pos = player.currentPosition
+        player.removeListener(events); player.removeListener(subs); player.release()
+        player = Streams.player(this, live = false, app.prefs.value, softwareFirst = true)
+        subs = TranslatedSubtitles(lifecycleScope, player, app).also { player.addListener(it) }
+        player.addListener(events)
+        playerRef.value = player
+        if (source != null) player.setMediaSource(source) else player.setMediaItem(item)
+        player.prepare(); player.seekTo(pos); player.play()
+        android.widget.Toast.makeText(this, "Using the software decoder for this title", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     /** Subtitles panel: translate into a language ("" = off), remembered for next time. */
@@ -254,7 +288,8 @@ class VodPlayerActivity : ComponentActivity() {
     private suspend fun prepare(url: String, progressKey: String) {
         error.value = null
         val ua = vod?.let { app.vod.userAgent(it) }
-        player.setMediaSource(Streams.source(this, app.http, url, ua, null))
+        currentSource = Streams.source(this, app.http, url, ua, null)
+        player.setMediaSource(currentSource!!)
         val saved = app.db.vod().progress(progressKey)
         player.prepare()
         if (saved != null && !saved.finished && saved.positionMs > 30_000) player.seekTo(saved.positionMs - 5_000)

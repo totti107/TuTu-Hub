@@ -99,6 +99,10 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private var player: ExoPlayer? = null
+    /** The player on screen (it's rebuilt with software decoders if the TV's hardware decoder fails). */
+    val playerRef = mutableStateOf<ExoPlayer?>(null)
+    private var softwareDecoders = false
+    private var decoderRetried = false
     /** On-device translated subtitles (Playback → Translate subtitles). */
     var subs: TranslatedSubtitles? = null
         private set
@@ -131,12 +135,15 @@ class PlayerActivity : ComponentActivity() {
         }
         // Full screen takes over from the mini player (one stream at a time).
         app.miniPlayer.value = null
+        // Previews let go of the video decoder before full screen starts.
+        Streams.stopPreviews()
         createPlayer()
         subs = TranslatedSubtitles(lifecycleScope, player!!, app).also { player!!.addListener(it) }
+        playerRef.value = player
         handleIntent(intent)
         setContent {
             ArenaTheme {
-                PlayerScreen(activity = this, player = player!!, state = ui.value, zapIds = ids)
+                playerRef.value?.let { PlayerScreen(activity = this, player = it, state = ui.value, zapIds = ids) }
             }
         }
         // Red record button while this channel is being recorded.
@@ -443,7 +450,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun createPlayer() {
         val prefs = app.prefs.value
-        val renderers = Streams.renderers(this)
+        val renderers = Streams.renderers(this, softwareFirst = softwareDecoders)
         player = ExoPlayer.Builder(this, renderers)
             .setLoadControl(Streams.loadControl(live = true, buffer = prefs.buffer))
             .build().apply {
@@ -485,6 +492,7 @@ class PlayerActivity : ComponentActivity() {
             }
             triedHls = false
             triedAlt = false
+            decoderRetried = false
             if (captionsOffByUs && id !in badCaptions) {
                 captionsOffByUs = false
                 player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build() }
@@ -537,6 +545,15 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /** New player with software decoders (keeps the same channel). */
+    private fun rebuildPlayer(ch: ChannelEntity) {
+        player?.release()
+        createPlayer()
+        subs = TranslatedSubtitles(lifecycleScope, player!!, app).also { player!!.addListener(it) }
+        playerRef.value = player
+        play(ch, forceHls = triedHls)
+    }
+
     private fun handleError(e: PlaybackException) {
         val ch = ui.value.channel
         // The subtitle / caption part failed (not the picture or sound): carry on without subtitles.
@@ -544,7 +561,7 @@ class PlayerActivity : ComponentActivity() {
             ?.takeIf { it.type == androidx.media3.exoplayer.ExoPlaybackException.TYPE_RENDERER }
             ?.let { runCatching { player?.getRendererType(it.rendererIndex) }.getOrNull() }
         val decoding = e.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED || e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
-        if (ch != null && (failedType == androidx.media3.common.C.TRACK_TYPE_TEXT || (decoding && ch.id !in badCaptions && app.prefs.value.subtitleTranslate.isNotEmpty()))) {
+        if (ch != null && failedType == androidx.media3.common.C.TRACK_TYPE_TEXT && ch.id !in badCaptions) {
             badCaptions += ch.id
             captionsOffByUs = true
             player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true).build() }
@@ -557,6 +574,21 @@ class PlayerActivity : ComponentActivity() {
             triedHls = true
             play(ch, forceHls = true)
             return
+        }
+        // The picture / sound decoder refused: free previews and retry, then switch to the software decoders.
+        if (ch != null && decoding && failedType != androidx.media3.common.C.TRACK_TYPE_TEXT) {
+            if (!decoderRetried) {
+                decoderRetried = true
+                Streams.stopPreviews()
+                lifecycleScope.launch { delay(800); play(ch, forceHls = triedHls) }
+                return
+            }
+            if (!softwareDecoders) {
+                softwareDecoders = true
+                toast("Using the software decoder for this stream")
+                rebuildPlayer(ch)
+                return
+            }
         }
         // "Auto" stream type: if one format fails, try the other once (TS <-> HLS).
         if (ch != null && !triedAlt && app.streams.hasAlternate(ch) && e.errorCode != PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
@@ -579,10 +611,10 @@ class PlayerActivity : ComponentActivity() {
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Can't reach the stream. Check your connection."
             PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ->
                 "This device can't decode this stream" + when (failedType) {
-                    androidx.media3.common.C.TRACK_TYPE_VIDEO -> " (picture: the TV doesn't support this video format)."
-                    androidx.media3.common.C.TRACK_TYPE_AUDIO -> " (sound: the TV doesn't support this audio format)."
+                    androidx.media3.common.C.TRACK_TYPE_VIDEO -> " (picture)."
+                    androidx.media3.common.C.TRACK_TYPE_AUDIO -> " (sound)."
                     else -> "."
-                }
+                } + (Streams.decoderDetail(e)?.let { "\n$it" } ?: "")
             else -> "Playback failed (${e.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')})."
         }
         scheduleRetry(msg)
