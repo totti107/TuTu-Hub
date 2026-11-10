@@ -57,3 +57,7 @@ the previous version is 3.14.8 (build 1023), which played fine on the TV.
 3.15.1: hidden-caption search is back ONLY as an opt-in (Settings → Playback → "Look for hidden captions", off by
 default). If the picture fails while it's on, TuTu turns it off for that channel and retries. Notes are small, above
 the button bar. Known good: 3.14.8 (build 1023), 3.15.0 (build 1024).
+
+3.16.0: FFmpeg audio decoders added (org.jellyfin.media3:media3-ffmpeg-decoder 1.5.0+1, extension mode ON = TV decoders
+first) for channels with no sound (likely MP2/AC-3 audio); Live TV reopens on the last watched channel.
+If sound gets worse (e.g. soundbar Dolby), revert the extension mode / dependency. Previous: 3.15.1 (build 1025).

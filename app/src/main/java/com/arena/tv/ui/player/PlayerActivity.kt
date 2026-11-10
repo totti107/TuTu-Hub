@@ -545,6 +545,7 @@ class PlayerActivity : ComponentActivity() {
             triedAlt = false
             decoderRetried = false
             val adopt = Streams.isPlaying(id)
+            Streams.lastWatched = id
             if (captionsOffByUs && id !in badCaptions) {
                 captionsOffByUs = false
                 player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build() }

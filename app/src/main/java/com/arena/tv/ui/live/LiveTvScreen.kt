@@ -50,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -257,11 +258,23 @@ private fun ChannelList(vm: LiveTvViewModel, modifier: Modifier, wide: Boolean =
     fun play(ch: ChannelEntity) = PlayerActivity.start(context, ch.id, channels.map { it.id }, null)
     if (channels.isEmpty()) { Box(modifier) { EmptyState("Nothing here", "Channels you favorite or watch show up here.") }; return }
     LaunchedEffect(channels.firstOrNull()?.id, wide) { if (wide && selected == null) channels.firstOrNull()?.let(vm::select) }
-    LazyColumn(modifier, contentPadding = PaddingValues(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    // Scroll to the channel you were watching (or the selected one) and put the remote's focus on it.
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val selectedFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(selected?.id, channels.size) {
+        val i = channels.indexOfFirst { it.id == selected?.id }
+        if (i >= 0 && listState.layoutInfo.visibleItemsInfo.none { it.index == i }) listState.scrollToItem((i - 2).coerceAtLeast(0))
+    }
+    LaunchedEffect(vm.focusSelected.collectAsStateWithLifecycle().value) {
+        if (vm.focusSelected.value) { kotlinx.coroutines.delay(150); runCatching { selectedFocus.requestFocus() }; vm.focusSelected.value = false }
+    }
+    LazyColumn(modifier, state = listState, contentPadding = PaddingValues(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         itemsIndexed(channels, key = { _, c -> c.id }) { i, ch ->
-            ChannelCard(i + 1, ch, guide[ch.id], wide && selected?.id == ch.id, ch.id in favs,
-                onClick = { if (wide && selected?.id != ch.id) vm.select(ch) else play(ch) },
-                onFav = { vm.toggleFavorite(ch.id) })
+            Box(if (selected?.id == ch.id) Modifier.focusRequester(selectedFocus) else Modifier) {
+                ChannelCard(i + 1, ch, guide[ch.id], wide && selected?.id == ch.id, ch.id in favs,
+                    onClick = { if (wide && selected?.id != ch.id) vm.select(ch) else play(ch) },
+                    onFav = { vm.toggleFavorite(ch.id) })
+            }
         }
     }
 }

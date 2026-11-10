@@ -14,3 +14,6 @@
 
 # Chromecast: the options provider is only named in the manifest.
 -keep class com.arena.tv.ui.player.CastOptionsProvider { *; }
+
+# FFmpeg audio decoder is loaded by name.
+-keep class androidx.media3.decoder.ffmpeg.** { *; }

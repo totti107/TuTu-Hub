@@ -60,11 +60,13 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
     val settings = c.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     init {
-        // Back from full screen: select the channel you were watching (its stream keeps playing in the preview).
+        // Back from full screen, or coming back to Live TV later (e.g. from Home): open the channel you were
+        // watching — its category, selected and previewed, with the remote on it.
         viewModelScope.launch {
+            com.arena.tv.ui.player.Streams.lastWatched?.let { id -> c.db.channels().byId(id)?.let { goTo(it) } }
             com.arena.tv.ui.player.Streams.nowPlaying.collect { id ->
                 if (id != null) {
-                    c.db.channels().byId(id)?.let { selected.value = it }
+                    c.db.channels().byId(id)?.let { goTo(it) }
                     com.arena.tv.ui.player.Streams.nowPlaying.value = null
                 }
             }
@@ -153,6 +155,16 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun select(ch: ChannelEntity) { selected.value = ch }
+    /** Ask the channel list to put the remote's focus on the selected channel. */
+    val focusSelected = MutableStateFlow(false)
+    private fun goTo(ch: ChannelEntity) {
+        if (tab.value == 2) tab.value = 0
+        val sec = section.value
+        // Keep All / Favorites / Recent if the channel is in there; otherwise open its own category.
+        if (sec !is Section.All && sec !is Section.Favorites && sec !is Section.Recent) section.value = Section.Group(ch.groupTitle, ch.playlistId)
+        selected.value = ch
+        focusSelected.value = true
+    }
 
     fun toggleFavorite(id: String) = viewModelScope.launch {
         if (id in favoriteIds.value) c.db.user().removeFavorite(id)

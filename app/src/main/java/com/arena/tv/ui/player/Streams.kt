@@ -44,6 +44,8 @@ object Streams {
     @Volatile var fullscreen = false
     /** Small screens showing the shared player right now. */
     var previewsShown = 0
+    /** Last channel watched full screen (Live TV opens on it, even after visiting Home). */
+    @Volatile var lastWatched: String? = null
     /** Last channel watched full screen: the Live TV preview follows it when you come back. */
     val nowPlaying = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
@@ -103,7 +105,8 @@ object Streams {
                                         extensionRendererMode: Int, out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>) {
             out.add(androidx.media3.exoplayer.text.TextRenderer(output, outputLooper).apply { experimentalSetLegacyDecodingEnabled(true) })
         }
-    }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER).setEnableDecoderFallback(true).apply {
+    // "ON": the TV's own decoders first (keeps Dolby passthrough to soundbars); FFmpeg only for sound the TV can't play.
+    }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON).setEnableDecoderFallback(true).apply {
         if (softwareFirst) setMediaCodecSelector { mime, secure, tunneling ->
             androidx.media3.exoplayer.mediacodec.MediaCodecUtil.getDecoderInfos(mime, secure, tunneling).sortedBy { !it.softwareOnly }
         }
