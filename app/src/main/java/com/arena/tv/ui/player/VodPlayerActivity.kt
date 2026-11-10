@@ -85,7 +85,10 @@ class VodPlayerActivity : ComponentActivity() {
     private lateinit var subs: TranslatedSubtitles
     private var textOffAfterError = false
     private var decoderRetried = false
-    private var currentSource: androidx.media3.exoplayer.source.MediaSource? = null
+    private var currentUrl: String? = null
+    private var currentUa: String? = null
+    /** Offer "Try the software decoder" in the error box. */
+    private val canTrySoftware = mutableStateOf(false)
     private var softwareDecoders = false
     private val playerRef = mutableStateOf<ExoPlayer?>(null)
     private lateinit var events: Player.Listener
@@ -125,19 +128,21 @@ class VodPlayerActivity : ComponentActivity() {
                     // The subtitles can't be read: carry on without them, from the same spot.
                     textOffAfterError = true
                     player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true).build()
-                    player.prepare(); player.play()
+                    // Give the TV a moment to let go of its video decoder before starting again.
+                    rebuild(software = false, waitMs = 1200)
                     android.widget.Toast.makeText(this@VodPlayerActivity, "These subtitles couldn't be read, so they're off for this title", android.widget.Toast.LENGTH_LONG).show()
                     return
                 }
-                // The TV's picture / sound decoder refused: retry once, then switch to the software decoders.
+                // The TV's picture / sound decoder refused: fresh player + hardware again after a pause.
+                // The slow software decoder is only used if you choose it.
                 val decoding = e.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED || e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
                 if (decoding && failed != androidx.media3.common.C.TRACK_TYPE_TEXT) {
                     if (!decoderRetried) {
                         decoderRetried = true; Streams.stopPreviews()
-                        lifecycleScope.launch { delay(800); player.prepare(); player.play() }
+                        rebuild(software = softwareDecoders, waitMs = 1500)
                         return
                     }
-                    if (!softwareDecoders) { softwareDecoders = true; rebuildWithSoftware(); return }
+                    canTrySoftware.value = !softwareDecoders
                 }
                 error.value = "Can't play this title (${e.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')})" + when (failed) {
                     androidx.media3.common.C.TRACK_TYPE_VIDEO -> ": this device doesn't support its video format."
@@ -222,6 +227,7 @@ class VodPlayerActivity : ComponentActivity() {
                             Text(it, color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 WhiteButton("Play in another app", { openElsewhere() })
+                                if (canTrySoftware.value) com.arena.tv.ui.components.GhostButton("Try software decoder (slow)", { useSoftwareDecoder() })
                                 com.arena.tv.ui.components.GhostButton("Back", { finish() })
                             }
                             Text("VLC and similar apps have their own decoders and can play formats some TVs can't.", color = Color(0x99FFFFFF),
@@ -243,18 +249,32 @@ class VodPlayerActivity : ComponentActivity() {
     }
 
     /** Same title, same spot, with the software decoders (when the TV's hardware decoder refuses). */
-    private fun rebuildWithSoftware() {
-        val item = player.currentMediaItem ?: return
-        val source = currentSource
+    /** A fresh player for the same title, at the same spot (hardware decoder, or software if [software]). */
+    private fun rebuild(software: Boolean, waitMs: Long) {
         val pos = player.currentPosition
+        val url = currentUrl
+        val item = player.currentMediaItem
         player.removeListener(events); player.removeListener(subs); player.release()
-        player = Streams.player(this, live = false, app.prefs.value, softwareFirst = true)
-        subs = TranslatedSubtitles(lifecycleScope, player, app).also { player.addListener(it) }
-        player.addListener(events)
-        playerRef.value = player
-        if (source != null) player.setMediaSource(source) else player.setMediaItem(item)
-        player.prepare(); player.seekTo(pos); player.play()
-        android.widget.Toast.makeText(this, "Using the software decoder for this title", android.widget.Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            delay(waitMs)
+            player = Streams.player(this@VodPlayerActivity, live = false, app.prefs.value, softwareFirst = software)
+            if (textOffAfterError) player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true).build()
+            subs = TranslatedSubtitles(lifecycleScope, player, app).also { player.addListener(it) }
+            player.addListener(events)
+            playerRef.value = player
+            error.value = null
+            if (url != null) player.setMediaSource(Streams.source(this@VodPlayerActivity, app.http, url, currentUa, null))
+            else item?.let { player.setMediaItem(it) }
+            player.prepare(); player.seekTo(pos); player.play()
+        }
+    }
+
+    /** Error box button: slow but plays most files (only when you choose it). */
+    private fun useSoftwareDecoder() {
+        softwareDecoders = true; decoderRetried = true; canTrySoftware.value = false
+        rebuild(software = true, waitMs = 300)
+        android.widget.Toast.makeText(this, "Using the software decoder (it may be slow on big files)", android.widget.Toast.LENGTH_LONG).show()
     }
 
     /** Subtitles panel: translate into a language ("" = off), remembered for next time. */
@@ -306,8 +326,8 @@ class VodPlayerActivity : ComponentActivity() {
     private suspend fun prepare(url: String, progressKey: String) {
         error.value = null
         val ua = vod?.let { app.vod.userAgent(it) }
-        currentSource = Streams.source(this, app.http, url, ua, null)
-        player.setMediaSource(currentSource!!)
+        currentUrl = url; currentUa = ua; decoderRetried = false
+        player.setMediaSource(Streams.source(this, app.http, url, ua, null))
         val saved = app.db.vod().progress(progressKey)
         player.prepare()
         if (saved != null && !saved.finished && saved.positionMs > 30_000) player.seekTo(saved.positionMs - 5_000)

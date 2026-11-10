@@ -13,6 +13,8 @@
 | 3.14.5 | 1020 | `87c33d6` | ? **removes the 3.13.3 caption search** — streams read exactly like 3.13.2 again |
 | 3.14.6 | 1021 | (next) | movie errors show the video format (e.g. 3840×2160 · HEVC 10-bit · HDR) and offer "Play in another app" |
 
+| 3.14.7 | 1022 | (next) | no automatic software decoder (it made movies laggy); restarts wait for the TV to release its decoder; "Try software decoder (slow)" button instead |
+
 Test notes: after unplugging the TV, 3.14.4 plays live channels fine. Some movies/episodes fail with
 `video/hevc` (hardware decoder refused, software decoder `c2.android.hevc.decoder` too weak) — a per-file format
 limit of the TV (likely 4K / 10-bit / HDR / Dolby Vision), not the 3.13.3 bug.
@@ -38,3 +40,7 @@ Lighter alternative: keep main and only revert the player files to 3.13.2:
 
 Any APK can also be downloaded from the repo's Releases page (each build is kept), but installing an older one
 needs uninstalling first (loses settings unless you use Settings → Backup & restore first).
+
+3.14.5/3.14.6 on the TV: movies played but some went "subtitles couldn't be read" → "Using the software decoder" →
+very slow and laggy. Cause: the restart after the subtitle error came too fast, the hardware decoder was still busy,
+so it fell to the software decoder. Fixed in 3.14.7.

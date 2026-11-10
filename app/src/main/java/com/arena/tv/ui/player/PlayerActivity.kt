@@ -547,7 +547,7 @@ class PlayerActivity : ComponentActivity() {
 
     /** New player with software decoders (keeps the same channel). */
     private fun rebuildPlayer(ch: ChannelEntity) {
-        player?.release()
+        runCatching { player?.release() }
         createPlayer()
         subs = TranslatedSubtitles(lifecycleScope, player!!, app).also { player!!.addListener(it) }
         playerRef.value = player
@@ -566,7 +566,8 @@ class PlayerActivity : ComponentActivity() {
             captionsOffByUs = true
             player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true).build() }
             toast("This channel's captions couldn't be read, so subtitles are off for it")
-            play(ch, forceHls = triedHls)
+            // A short pause lets the TV release its video decoder before the restart.
+            lifecycleScope.launch { delay(1200); play(ch, forceHls = triedHls) }
             return
         }
         // Some providers serve HLS from URLs without an .m3u8 extension: try again as HLS once.
@@ -578,15 +579,11 @@ class PlayerActivity : ComponentActivity() {
         // The picture / sound decoder refused: free previews and retry, then switch to the software decoders.
         if (ch != null && decoding && failedType != androidx.media3.common.C.TRACK_TYPE_TEXT) {
             if (!decoderRetried) {
+                // Fresh player, hardware decoder again after a pause (the TV may still be releasing it).
                 decoderRetried = true
                 Streams.stopPreviews()
-                lifecycleScope.launch { delay(800); play(ch, forceHls = triedHls) }
-                return
-            }
-            if (!softwareDecoders) {
-                softwareDecoders = true
-                toast("Using the software decoder for this stream")
-                rebuildPlayer(ch)
+                player?.release(); player = null; playerRef.value = null
+                lifecycleScope.launch { delay(1500); rebuildPlayer(ch) }
                 return
             }
         }
