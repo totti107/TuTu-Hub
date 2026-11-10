@@ -131,7 +131,7 @@ private fun SwitchRow(title: String, desc: String?, checked: Boolean, onChange: 
 private val LANGS = listOf("en" to "English", "ar" to "Arabic", "fr" to "French", "es" to "Spanish", "de" to "German",
     "it" to "Italian", "pt" to "Portuguese", "tr" to "Turkish", "nl" to "Dutch", "hi" to "Hindi", "ur" to "Urdu")
 
-fun LazyListScope.playbackItems(p: Prefs, set: ((Prefs) -> Prefs) -> Unit) {
+fun LazyListScope.playbackItems(p: Prefs, set: ((Prefs) -> Prefs) -> Unit, startPack: (String) -> Unit = {}) {
     item {
         SetCard("Stream") {
             ChoiceRow("Buffer size", "How much video is loaded ahead. Pick High if channels stutter.",
@@ -145,7 +145,8 @@ fun LazyListScope.playbackItems(p: Prefs, set: ((Prefs) -> Prefs) -> Unit) {
             ChoiceRow("Preferred audio language", "Used when a stream has more than one.", listOf("" to "Stream default") + LANGS, p.audioLang) { v -> set { it.copy(audioLang = v) } }
             ChoiceRow("Subtitles", "Turned on automatically when available in this language.", listOf("" to "Off") + LANGS, p.subtitleLang) { v -> set { it.copy(subtitleLang = v) } }
             ChoiceRow("Translate subtitles (AI)", "Translates subtitles and closed captions on this device. Each language downloads once (about 30 MB).",
-                listOf("" to "Off") + com.arena.tv.data.SubtitleTranslator.LANGS, p.subtitleTranslate) { v -> set { it.copy(subtitleTranslate = v) } }
+                listOf("" to "Off") + com.arena.tv.data.SubtitleTranslator.LANGS, p.subtitleTranslate) { v -> set { it.copy(subtitleTranslate = v) }; startPack(v) }
+            if (p.subtitleTranslate.isNotEmpty()) TranslatorStatus(p.subtitleTranslate)
             ChoiceRow("Subtitle size", null, listOf("small" to "Small", "normal" to "Normal", "large" to "Large", "huge" to "Extra large"), p.subtitleSize) { v -> set { it.copy(subtitleSize = v) } }
         }
     }
@@ -298,7 +299,7 @@ private fun TitleCard(p: Prefs, set: ((Prefs) -> Prefs) -> Unit) {
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-            androidx.compose.material3.OutlinedTextField(input, { input = it }, Modifier.weight(1f), singleLine = true,
+            com.arena.tv.ui.components.TvTextField(input, { input = it }, Modifier.weight(1f), singleLine = true,
                 placeholder = { Text("Add a word, tag or emoji") }, shape = RoundedCornerShape(12.dp))
             Spacer(Modifier.width(8.dp))
             Button(onClick = { val w = input.trim(); if (w.isNotEmpty() && w !in words) set { it.copy(titleWords = words + w) }; input = "" },
@@ -354,7 +355,7 @@ private fun GuideLinks(vm: SettingsViewModel, pl: com.arena.tv.data.Playlist) {
         Text(if (pl.type == com.arena.tv.data.SourceType.MAC) "XMLTV links used instead of the portal's guide. Separate several with commas."
             else "XMLTV links added to the provider's own guide, for channels it doesn't cover. Separate several with commas.",
             color = ArenaColors.Muted, fontSize = 12.sp)
-        androidx.compose.material3.OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().padding(top = 6.dp), placeholder = { Text("https://…/guide.xml.gz") },
+        com.arena.tv.ui.components.TvTextField(text, { text = it }, Modifier.fillMaxWidth().padding(top = 6.dp), placeholder = { Text("https://…/guide.xml.gz") },
             shape = RoundedCornerShape(12.dp), maxLines = 3)
         if (text.trim() != pl.epgUrl.trim()) Button(onClick = { vm.saveGuideLinks(pl.id, text) }, modifier = Modifier.padding(top = 8.dp).focusOutline()) { Text("Save and reload guide") }
     }
@@ -535,5 +536,35 @@ private fun PlannedList() {
                 TextButton(onClick = { scope.launch { recs.cancel(r.id) } }, modifier = Modifier.focusOutline()) { Text("Cancel") }
             }
         }
+    }
+}
+
+/** Settings → Playback: is the chosen language's translator on this device yet? */
+@Composable
+private fun TranslatorStatus(code: String) {
+    val t = LocalContext.current.app.translator
+    val packs by t.packs.collectAsState()
+    val downloading by t.downloading.collectAsState()
+    val error by t.error.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) { t.refreshPacks() }
+    val name = com.arena.tv.data.SubtitleTranslator.name(code)
+    Column(Modifier.fillMaxWidth().padding(bottom = 6.dp).clip(RoundedCornerShape(10.dp)).background(ArenaColors.SurfaceHi).padding(12.dp)) {
+        when {
+            downloading == code -> {
+                Text("Downloading the $name translator…", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 6.dp), color = ArenaColors.Accent)
+                Text("About 30 MB, one time. Keep TuTu open until it's done.", color = ArenaColors.Muted, fontSize = 12.sp)
+            }
+            code in packs -> Text("✓ $name translator downloaded — ready, works offline", color = ArenaColors.Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("$name translator not downloaded yet", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(error ?: "About 30 MB. It also downloads by itself the first time subtitles appear.", color = if (error != null) ArenaColors.Live else ArenaColors.Muted, fontSize = 12.sp)
+                }
+                OutlinedButton(onClick = { t.download(code) }, modifier = Modifier.focusOutline()) { Text("Download now") }
+            }
+        }
+        if (packs.size > 1) Text("On this device: " + packs.sorted().joinToString { com.arena.tv.data.SubtitleTranslator.name(it) }, color = ArenaColors.Muted, fontSize = 12.sp,
+            modifier = Modifier.padding(top = 6.dp))
     }
 }

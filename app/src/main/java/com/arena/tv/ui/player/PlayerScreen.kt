@@ -498,14 +498,27 @@ private fun ScorePill(g: Game, goal: Boolean) {
 private fun SubsPanel(a: PlayerActivity) {
     val options = remember { a.tracks(C.TRACK_TYPE_TEXT) }
     val prefs by a.app.prefs.collectAsState()
+    val downloading by a.app.translator.downloading.collectAsState()
     LazyColumn {
-        item { PanelRow("Off", selected = options.none { it.selected }) { a.selectTrack(C.TRACK_TYPE_TEXT, null) } }
-        if (options.isEmpty()) item { Text("This channel sends no subtitles or captions.", color = ArenaColors.Muted, modifier = Modifier.padding(16.dp)) }
-        items(options) { o -> PanelRow(o.label, selected = o.selected) { a.selectTrack(C.TRACK_TYPE_TEXT, o) } }
+        item {
+            Text("THIS CHANNEL'S SUBTITLES", color = ArenaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 4.dp))
+        }
+        if (options.isEmpty()) item {
+            Text(if (prefs.subtitleTranslate.isNotEmpty()) "This channel sends no subtitles or captions, so there's nothing to translate here."
+                else "This channel sends no subtitles or captions.", color = ArenaColors.Muted, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        } else {
+            item { PanelRow("Off", selected = options.none { it.selected }) { a.selectTrack(C.TRACK_TYPE_TEXT, null) } }
+            items(options) { o -> PanelRow(o.label, selected = o.selected) { a.selectTrack(C.TRACK_TYPE_TEXT, o) } }
+        }
         item {
             Text("TRANSLATE (AI, ON THIS DEVICE)", color = ArenaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp))
         }
+        downloading?.let { d -> item {
+            Text("⬇ Downloading ${com.arena.tv.data.SubtitleTranslator.name(d)}… (one time)", color = ArenaColors.Accent, fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+        } }
         item { PanelRow("Don't translate", selected = prefs.subtitleTranslate.isEmpty()) { a.setTranslate("") } }
         items(com.arena.tv.data.SubtitleTranslator.LANGS) { (code, name) ->
             PanelRow("Translate to $name", selected = prefs.subtitleTranslate == code) { a.setTranslate(code) }

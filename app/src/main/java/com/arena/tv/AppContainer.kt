@@ -60,6 +60,7 @@ class AppContainer(context: Context) {
         val bg = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
         sports.onGames = { games -> bg.launch { runCatching { reminders.schedule(games) } } }
         reminders.startDailyCheck()
+        translator.refreshPacks()
         // Planned recordings / reminders: alarms again after an app update, expired recordings cleaned up.
         bg.launch { kotlinx.coroutines.delay(3_000); runCatching { recordings.rearm() } }
     }

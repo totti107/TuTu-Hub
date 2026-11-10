@@ -335,6 +335,7 @@ class PlayerActivity : ComponentActivity() {
         app.settings.updatePrefs { it.copy(subtitleTranslate = lang) }
         app.prefs.value = app.prefs.value.copy(subtitleTranslate = lang)
         if (lang.isNotEmpty()) {
+            app.translator.download(lang)
             // Make sure subtitles are on (translation needs them).
             player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build() }
             subs?.ensureTextTrack()
@@ -433,7 +434,7 @@ class PlayerActivity : ComponentActivity() {
         val ds = OkHttpDataSource.Factory(app.http)
             .setUserAgent(ch.userAgent?.ifBlank { null } ?: "Mozilla/5.0 (Linux; Android) TuTuTV/1.0")
         ch.referrer?.let { ds.setDefaultRequestProperties(mapOf("Referer" to it)) }
-        return DefaultMediaSourceFactory(this).setDataSourceFactory(ds)
+        return DefaultMediaSourceFactory(this, Streams.extractors()).setDataSourceFactory(ds)
     }
 
     private fun load() {

@@ -65,12 +65,19 @@ object Streams {
         activity.window.attributes = activity.window.attributes.also { it.preferredDisplayModeId = best.modeId }
     }
 
+    /**
+     * Stream reader that also looks for the closed captions US / UK channels hide inside the video (CEA-608),
+     * even when the stream doesn't announce them, so they can be shown or translated.
+     */
+    fun extractors() = androidx.media3.extractor.DefaultExtractorsFactory().setTsSubtitleFormats(listOf(
+        androidx.media3.common.Format.Builder().setSampleMimeType(MimeTypes.APPLICATION_CEA608).setAccessibilityChannel(1).build()))
+
     fun source(context: Context, http: OkHttpClient, url: String, userAgent: String?, referrer: String?, forceHls: Boolean = false): MediaSource {
         val ds = OkHttpDataSource.Factory(http).setUserAgent(userAgent?.ifBlank { null } ?: "Mozilla/5.0 (Linux; Android) TuTuTV/1.0")
         referrer?.let { ds.setDefaultRequestProperties(mapOf("Referer" to it)) }
         val item = MediaItem.Builder().setUri(Uri.parse(url)).apply {
             if (forceHls || url.contains("m3u8", true)) setMimeType(MimeTypes.APPLICATION_M3U8)
         }.build()
-        return DefaultMediaSourceFactory(context).setDataSourceFactory(ds).createMediaSource(item)
+        return DefaultMediaSourceFactory(context, extractors()).setDataSourceFactory(ds).createMediaSource(item)
     }
 }

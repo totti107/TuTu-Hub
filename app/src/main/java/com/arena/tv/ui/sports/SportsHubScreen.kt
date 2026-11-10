@@ -134,7 +134,7 @@ fun SportsHubScreen(onOpenGame: (Game) -> Unit, onOpenSettings: () -> Unit) {
             },
         )
         if (searching) {
-            OutlinedTextField(state.query, vm::setQuery, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            com.arena.tv.ui.components.TvTextField(state.query, vm::setQuery, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 placeholder = { Text("Search teams or leagues") }, singleLine = true, shape = RoundedCornerShape(14.dp),
                 leadingIcon = { Icon(Icons.Rounded.Search, null) })
         }

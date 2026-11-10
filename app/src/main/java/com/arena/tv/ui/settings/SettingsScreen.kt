@@ -120,6 +120,8 @@ fun SettingsScreen() {
     // Android 13+ asks before an app can show notifications (team reminders, final scores).
     val notifPermission = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
     val askNotifications: () -> Unit = { if (android.os.Build.VERSION.SDK_INT >= 33) runCatching { notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS) } }
+    val appCtx = androidx.compose.ui.platform.LocalContext.current
+    val translatorDownload: (String) -> Unit = { appCtx.app.translator.download(it) }
     var page by rememberSaveable { mutableStateOf<SettingsPage?>(if (wide) SettingsPage.PLAYLISTS else null) }
     if (wide && page == null) page = SettingsPage.PLAYLISTS
     val pageRequest = androidx.compose.ui.platform.LocalContext.current.app.settingsPage
@@ -284,7 +286,7 @@ fun SettingsScreen() {
                     color = ArenaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
             }
             }
-            if (pg == SettingsPage.PLAYBACK) { item { SectionHeader("Playback") }; playbackItems(settings.prefs, vm::updatePrefs) }
+            if (pg == SettingsPage.PLAYBACK) { item { SectionHeader("Playback") }; playbackItems(settings.prefs, vm::updatePrefs) { translatorDownload(it) } }
             if (pg == SettingsPage.BROWSING) { item { SectionHeader("Browsing") }; browsingItems(settings.prefs, vm::updatePrefs) }
             if (pg == SettingsPage.RECORDING) { item { SectionHeader("Recording") }; recordingItems(settings.prefs, vm::updatePrefs) }
             if (pg == SettingsPage.PLANNER) { item { SectionHeader("Planner") }; plannerItems(settings.prefs, vm::updatePrefs, askNotifications) }
@@ -458,7 +460,7 @@ private fun PlaylistEditor(vm: SettingsViewModel, start: Playlist, onDismiss: ()
                     else -> {
                         Field(p.server, { p = p.copy(server = it) }, "Server (http://host:port)", KeyboardType.Uri, actions = next)
                         Field(p.user, { p = p.copy(user = it) }, "Username", actions = next)
-                        OutlinedTextField(p.pass, { p = p.copy(pass = it) }, Modifier.fillMaxWidth().padding(vertical = 4.dp), label = { Text("Password") }, singleLine = true,
+                        com.arena.tv.ui.components.TvTextField(p.pass, { p = p.copy(pass = it) }, Modifier.fillMaxWidth().padding(vertical = 4.dp), label = { Text("Password") }, singleLine = true,
                             visualTransformation = if (showPass) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); save() }),
@@ -504,7 +506,7 @@ private fun PlaylistEditor(vm: SettingsViewModel, start: Playlist, onDismiss: ()
 private fun Field(value: String, onChange: (String) -> Unit, label: String, kb: KeyboardType = KeyboardType.Text,
                   actions: KeyboardActions? = null, done: (() -> Unit)? = null) {
     val focus = LocalFocusManager.current
-    OutlinedTextField(value, onChange, Modifier.fillMaxWidth().padding(vertical = 4.dp), label = { Text(label) }, singleLine = true,
+    com.arena.tv.ui.components.TvTextField(value, onChange, Modifier.fillMaxWidth().padding(vertical = 4.dp), label = { Text(label) }, singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = kb, autoCorrectEnabled = false, imeAction = if (done != null) ImeAction.Done else ImeAction.Next),
         keyboardActions = actions ?: KeyboardActions(onNext = { focus.moveFocus(FocusDirection.Down) }, onDone = { focus.clearFocus(); done?.invoke() }))
 }
@@ -533,7 +535,7 @@ private fun CategoriesDialog(vm: SettingsViewModel, settings: AppSettings, onDis
                 Text("Channel categories", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close") }
             }
-            OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search categories") }, singleLine = true,
+            com.arena.tv.ui.components.TvTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search categories") }, singleLine = true,
                 leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 6.dp)) {
                 OutlinedButton(onClick = { vm.setAllHidden(keys, false) }) { Text("Show all") }
@@ -573,7 +575,7 @@ private fun TeamSearchDialog(vm: SettingsViewModel, onDismiss: () -> Unit) {
                 Text("Follow a team", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close") }
             }
-            OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Team name") }, singleLine = true,
+            com.arena.tv.ui.components.TvTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Team name") }, singleLine = true,
                 leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(14.dp))
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
             Text("Teams from the leagues you turned on.", color = ArenaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))

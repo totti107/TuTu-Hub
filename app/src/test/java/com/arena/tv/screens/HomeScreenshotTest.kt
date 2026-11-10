@@ -104,7 +104,7 @@ class HomeScreenshotTest {
                         ArenaTopBar(left = { PillTabs(listOf("Settings"), 0) {} })
                         Row(Modifier.fillMaxSize()) {
                             SettingsMenu(SettingsPage.PLAYBACK, true, Modifier.width(270.dp).fillMaxHeight()) {}
-                            LazyColumn(Modifier.weight(1f).fillMaxHeight()) { playbackItems(Prefs(buffer = "high", subtitleLang = "en")) {} }
+                            LazyColumn(Modifier.weight(1f).fillMaxHeight()) { playbackItems(Prefs(buffer = "high", subtitleLang = "en"), {}) }
                         }
                     }
                 }

@@ -9,6 +9,7 @@ import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -28,6 +29,37 @@ class SubtitleTranslator {
     /** "Downloading Arabic…" while a language model downloads; null otherwise. */
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status
+
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    private val manager by lazy { com.google.mlkit.common.model.RemoteModelManager.getInstance() }
+    /** Language packs on this device (English is built in). */
+    private val _packs = MutableStateFlow(setOf("en"))
+    val packs: StateFlow<Set<String>> = _packs
+    /** The language pack downloading right now, if any. */
+    private val _downloading = MutableStateFlow<String?>(null)
+    val downloading: StateFlow<String?> = _downloading
+    /** Why the last download failed (shown in Settings). */
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
+
+    fun refreshPacks() = scope.launch {
+        _packs.value = runCatching {
+            manager.getDownloadedModels(com.google.mlkit.nl.translate.TranslateRemoteModel::class.java).await().map { it.language }.toSet()
+        }.getOrDefault(emptySet()) + "en"
+    }
+
+    /** Downloads a language pack now (picking a language starts this, so it's ready before the first subtitle). */
+    fun download(code: String) {
+        if (code.isEmpty() || code == "en" || code in _packs.value || _downloading.value == code) return
+        scope.launch {
+            _downloading.value = code; _error.value = null
+            _status.value = "Downloading the ${name(code)} translator (first time only)…"
+            try {
+                manager.download(com.google.mlkit.nl.translate.TranslateRemoteModel.Builder(code).build(), DownloadConditions.Builder().build()).await()
+            } catch (e: Exception) { _error.value = "Couldn't download ${name(code)}: ${e.message ?: "no connection"}" }
+            finally { _downloading.value = null; _status.value = null; refreshPacks() }
+        }
+    }
 
     private val translators = HashMap<String, Translator>()
     private val ready = HashSet<String>()
@@ -62,8 +94,10 @@ class SubtitleTranslator {
             translators.getOrPut(pair) { Translation.getClient(TranslatorOptions.Builder().setSourceLanguage(src).setTargetLanguage(dst).build()) }
         }
         if (pair !in ready) {
-            _status.value = "Downloading the ${name(dst)} translator (first time only)…"
-            try { t.downloadModelIfNeeded(DownloadConditions.Builder().build()).await(); ready += pair } finally { _status.value = null }
+            val missing = listOf(src, dst).firstOrNull { it !in _packs.value } ?: dst
+            _status.value = "Downloading the ${name(missing)} translator (first time only)…"; _downloading.value = missing
+            try { t.downloadModelIfNeeded(DownloadConditions.Builder().build()).await(); ready += pair }
+            finally { _status.value = null; _downloading.value = null; refreshPacks() }
         }
         val out = t.translate(text).await()
         synchronized(cache) { cache[key] = out }

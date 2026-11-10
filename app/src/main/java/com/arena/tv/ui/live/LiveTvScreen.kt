@@ -130,7 +130,7 @@ fun LiveTvScreen(onOpenSettings: () -> Unit) {
             },
         )
         if (searching) {
-            OutlinedTextField(query, { vm.query.value = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            com.arena.tv.ui.components.TvTextField(query, { vm.query.value = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 placeholder = { Text("Search all channels") }, singleLine = true, shape = RoundedCornerShape(14.dp),
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 trailingIcon = { if (query.isNotEmpty()) IconAction(Icons.Rounded.Close, "Clear") { vm.query.value = "" } })
@@ -172,7 +172,7 @@ private fun CategoryPane(vm: LiveTvViewModel, sporty: Boolean, modifier: Modifie
     LazyColumn(modifier.panel(), contentPadding = PaddingValues(12.dp)) {
         header?.let { h -> item { Box(Modifier.padding(bottom = 10.dp)) { h() } } }
         item {
-            OutlinedTextField(gq, { vm.groupQuery.value = it }, Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            com.arena.tv.ui.components.TvTextField(gq, { vm.groupQuery.value = it }, Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 placeholder = { Text("Search categories…") }, singleLine = true, shape = RoundedCornerShape(16.dp))
         }
         if (!sporty) item { PaneItem("All Channels", total, section == Section.All, { pick(Section.All) }) }
@@ -239,7 +239,7 @@ private fun LibraryWide(vm: LiveTvViewModel, header: @Composable () -> Unit, sea
                 IconAction(Icons.Rounded.Hd, "HD only", tint = if (hd) ArenaColors.Accent else ArenaColors.Text) { vm.hdOnly.value = !hd }
                 IconAction(Icons.Rounded.Refresh, "Reload channels") { vm.refreshNow() }
             }
-            if (searching) OutlinedTextField(query, { vm.query.value = it }, Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+            if (searching) com.arena.tv.ui.components.TvTextField(query, { vm.query.value = it }, Modifier.fillMaxWidth().padding(horizontal = 10.dp),
                 placeholder = { Text("Search all channels") }, singleLine = true, shape = RoundedCornerShape(14.dp))
             ChannelList(vm, Modifier.weight(1f).fillMaxWidth(), wide = true)
         }

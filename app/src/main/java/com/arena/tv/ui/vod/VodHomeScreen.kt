@@ -122,7 +122,7 @@ fun VodHomeScreen(kind: Int, onOpen: (String) -> Unit, onOpenSettings: () -> Uni
             },
         )
         if (searching) {
-            OutlinedTextField(query, { vm.query.value = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            com.arena.tv.ui.components.TvTextField(query, { vm.query.value = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 placeholder = { Text("Search $noun") }, singleLine = true, shape = RoundedCornerShape(14.dp),
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 trailingIcon = { if (query.isNotEmpty()) IconAction(Icons.Rounded.Close, "Clear") { vm.query.value = "" } })
@@ -269,7 +269,7 @@ private fun CategoryPane(vm: VodViewModel, modifier: Modifier) {
     }
     LazyColumn(modifier.panel(), contentPadding = PaddingValues(8.dp)) {
         item {
-            OutlinedTextField(cq, { vm.catQuery.value = it }, Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            com.arena.tv.ui.components.TvTextField(cq, { vm.catQuery.value = it }, Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 placeholder = { Text("Search in categories") }, singleLine = true, shape = RoundedCornerShape(16.dp))
         }
         item { PaneItem("All $noun", total, cat == CAT_ALL, { pick(CAT_ALL) }) }

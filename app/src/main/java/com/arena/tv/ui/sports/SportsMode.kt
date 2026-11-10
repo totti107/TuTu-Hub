@@ -123,7 +123,7 @@ fun SportsMode(hub: SportsHubViewModel, mc: MatchCentreViewModel, header: @Compo
             // ---------------- left: leagues ----------------
             Column(Modifier.weight(0.24f).fillMaxHeight().panel().padding(10.dp)) {
                 header()
-                OutlinedTextField(leagueQuery, { leagueQuery = it }, Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                com.arena.tv.ui.components.TvTextField(leagueQuery, { leagueQuery = it }, Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     placeholder = { Text("Search leagues") }, singleLine = true, shape = RoundedCornerShape(16.dp))
                 val leagues = bySport.groupBy { it.league }.entries
                     .filter { leagueQuery.isBlank() || it.key.name.contains(leagueQuery, true) }
@@ -194,7 +194,7 @@ fun SportsMode(hub: SportsHubViewModel, mc: MatchCentreViewModel, header: @Compo
                         SportsGuideButton()
                         IconAction(Icons.Rounded.Refresh, "Refresh", onClick = hub::manualRefresh)
                     }
-                    if (searching) OutlinedTextField(state.query, hub::setQuery, Modifier.fillMaxWidth(), placeholder = { Text("Team, player or event") },
+                    if (searching) com.arena.tv.ui.components.TvTextField(state.query, hub::setQuery, Modifier.fillMaxWidth(), placeholder = { Text("Team, player or event") },
                         singleLine = true, shape = RoundedCornerShape(14.dp))
                 }
                 ChannelsPane(mc, selected, preview, Modifier.fillMaxWidth().weight(1f), onPick = { picker = true }) { ch ->

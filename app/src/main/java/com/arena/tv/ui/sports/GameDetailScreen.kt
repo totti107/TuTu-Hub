@@ -435,7 +435,7 @@ internal fun ChannelPicker(search: suspend (String) -> List<ChannelEntity>, onPi
         Text("Which channel shows this game?", style = MaterialTheme.typography.titleMedium)
         Text("It'll be pinned to the top, and channels you pick help future matches in this league.", color = ArenaColors.Muted, fontSize = 12.sp)
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search channels") },
+        com.arena.tv.ui.components.TvTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search channels") },
             leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true,
             trailingIcon = { if (q.isNotEmpty()) IconButton(onClick = { q = "" }) { Icon(Icons.Rounded.Close, "Clear") } })
         if (q.isBlank()) Text("Your favorites", color = ArenaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
