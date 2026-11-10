@@ -48,3 +48,8 @@ so it fell to the software decoder. Fixed in 3.14.7.
 After 3.14.5/3.14.6 live was also "super laggy": in 3.14.4–3.14.6 a channel that fell back to the software decoder
 kept the software decoder for every following channel (fixed in 3.14.7). 3.14.8 shows the decoder in Stream info
 and a "⚠ Software decoder" badge, and translation waits for live caption lines to settle (less CPU).
+
+3.15.0 (build after 1023): ONE shared live player for preview, mini player and full screen (Streams.shared) —
+opening full screen continues the preview's stream (no reconnect/stutter), Back keeps the little screen playing.
+CC button cycles subtitles; "Subtitle options" button opens the panel. If this causes playback trouble,
+the previous version is 3.14.8 (build 1023), which played fine on the TV.

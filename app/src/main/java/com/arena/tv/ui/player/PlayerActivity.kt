@@ -77,6 +77,8 @@ data class PlayerUi(
     /** The video decoder in use, e.g. "c2.mtk.avc.decoder"; software ones make playback slow. */
     val decoder: String? = null,
     val softwareDecoder: Boolean = false,
+    /** Short message in the middle of the screen ("Subtitles: English"). */
+    val notice: String? = null,
 )
 
 /** One choice in the audio / subtitle / quality panels. groupIndex -1 = Auto (or Off for subtitles). */
@@ -105,6 +107,16 @@ class PlayerActivity : ComponentActivity() {
     /** The player on screen (it's rebuilt with software decoders if the TV's hardware decoder fails). */
     val playerRef = mutableStateOf<ExoPlayer?>(null)
     private var softwareDecoders = false
+    private var events: Player.Listener? = null
+    private var analytics: androidx.media3.exoplayer.analytics.AnalyticsListener? = null
+
+    /** Lets go of the shared player (listeners off) without stopping it. */
+    private fun detachPlayer() {
+        player?.let { p ->
+            events?.let(p::removeListener); analytics?.let(p::removeAnalyticsListener); subs?.let(p::removeListener)
+        }
+        events = null; analytics = null
+    }
     private var decoderRetried = false
     /** On-device translated subtitles (Playback → Translate subtitles). */
     var subs: TranslatedSubtitles? = null
@@ -138,8 +150,8 @@ class PlayerActivity : ComponentActivity() {
         }
         // Full screen takes over from the mini player (one stream at a time).
         app.miniPlayer.value = null
-        // Previews let go of the video decoder before full screen starts.
-        Streams.stopPreviews()
+        // Full screen takes over the shared live player (the preview's stream continues, no reconnect).
+        Streams.fullscreen = true
         createPlayer()
         subs = TranslatedSubtitles(lifecycleScope, player!!, app).also { player!!.addListener(it) }
         playerRef.value = player
@@ -381,6 +393,22 @@ class PlayerActivity : ComponentActivity() {
         )
     }
 
+    private var noticeJob: Job? = null
+    fun notice(text: String) {
+        ui.value = ui.value.copy(notice = text)
+        noticeJob?.cancel(); noticeJob = lifecycleScope.launch { delay(2500); ui.value = ui.value.copy(notice = null) }
+    }
+
+    /** CC button: next subtitle each press (Off → first language → … → Off). */
+    fun cycleSubtitles() {
+        val options = tracks(androidx.media3.common.C.TRACK_TYPE_TEXT)
+        if (options.isEmpty()) { notice("No subtitles on this channel"); return }
+        val cur = options.indexOfFirst { it.selected }
+        val next = if (cur + 1 >= options.size) null else options[cur + 1]
+        selectTrack(androidx.media3.common.C.TRACK_TYPE_TEXT, next)
+        notice(if (next == null) "Subtitles: Off" else "Subtitles: ${next.label}  (${cur + 2}/${options.size})")
+    }
+
     /** CC panel: translate subtitles into a language ("" = off). Remembered for next time. */
     fun setTranslate(lang: String) = lifecycleScope.launch {
         app.settings.updatePrefs { it.copy(subtitleTranslate = lang) }
@@ -454,21 +482,19 @@ class PlayerActivity : ComponentActivity() {
 
     private fun createPlayer() {
         val prefs = app.prefs.value
-        val renderers = Streams.renderers(this, softwareFirst = softwareDecoders)
-        player = ExoPlayer.Builder(this, renderers)
-            .setLoadControl(Streams.loadControl(live = true, buffer = prefs.buffer))
-            .build().apply {
+        player = Streams.shared(this, softwareDecoders).apply {
                 playWhenReady = true
                 // Which video decoder the TV gave us (hardware = smooth, software = slow).
-                addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+                analytics = object : androidx.media3.exoplayer.analytics.AnalyticsListener {
                     override fun onVideoDecoderInitialized(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, decoderName: String,
                                                            initializedTimestampMs: Long, initializationDurationMs: Long) {
                         val sw = Streams.isSoftwareDecoder(decoderName)
                         ui.value = ui.value.copy(decoder = decoderName, softwareDecoder = sw)
                     }
-                })
+                }
+                addAnalyticsListener(analytics!!)
                 Streams.applyLanguages(this, prefs)
-                addListener(object : Player.Listener {
+                events = object : Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {
                         ui.value = ui.value.copy(buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE && ui.value.error == null)
                         if (state == Player.STATE_READY) { retries = 0; ui.value = ui.value.copy(error = null, retrying = false) }
@@ -483,7 +509,8 @@ class PlayerActivity : ComponentActivity() {
                         ui.value = ui.value.copy(badges = badges(), seekable = player?.isCurrentMediaItemSeekable == true)
                     }
                     override fun onIsPlayingChanged(isPlaying: Boolean) { ui.value = ui.value.copy(playing = isPlaying) }
-                })
+                }
+                addListener(events!!)
             }
     }
 
@@ -505,11 +532,14 @@ class PlayerActivity : ComponentActivity() {
             triedHls = false
             triedAlt = false
             decoderRetried = false
+            val adopt = Streams.isPlaying(id)
             if (captionsOffByUs && id !in badCaptions) {
                 captionsOffByUs = false
                 player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build() }
             }
-            play(ch, forceHls = false)
+            // The preview / mini player was already on this channel: keep its stream (no reconnect, no stutter).
+            if (adopt) { ui.value = ui.value.copy(buffering = player?.playbackState != Player.STATE_READY, format = ui.value.format ?: "TS") }
+            else play(ch, forceHls = false)
             val fav = id in app.db.user().favoriteIds().first()
             ui.value = ui.value.copy(channel = ch, index = index, total = ids.size, favorite = fav, error = null, now = null, next = null, videoInfo = null)
             app.db.user().touchRecent(RecentChannelEntity(id, System.currentTimeMillis()))
@@ -538,6 +568,7 @@ class PlayerActivity : ComponentActivity() {
                 if (hls) setMimeType(MimeTypes.APPLICATION_M3U8)
             }.build()
             p.setMediaSource(mediaSourceFactory(ch.copy(userAgent = r.userAgent)).createMediaSource(item))
+            Streams.sharedChannel = ch.id
             p.prepare()
             p.play()
         }
@@ -559,7 +590,8 @@ class PlayerActivity : ComponentActivity() {
 
     /** New player with software decoders (keeps the same channel). */
     private fun rebuildPlayer(ch: ChannelEntity) {
-        runCatching { player?.release() }
+        detachPlayer()
+        Streams.resetShared(this, softwareDecoders)
         createPlayer()
         subs = TranslatedSubtitles(lifecycleScope, player!!, app).also { player!!.addListener(it) }
         playerRef.value = player
@@ -594,7 +626,7 @@ class PlayerActivity : ComponentActivity() {
                 // Fresh player, hardware decoder again after a pause (the TV may still be releasing it).
                 decoderRetried = true
                 Streams.stopPreviews()
-                player?.release(); player = null; playerRef.value = null
+                detachPlayer(); Streams.releaseShared(); player = null; playerRef.value = null
                 lifecycleScope.launch { delay(1500); rebuildPlayer(ch) }
                 return
             }
@@ -671,6 +703,7 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { zap(-1); return true }
                 KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { zap(+1); return true }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { togglePlay(); return true }
+                KeyEvent.KEYCODE_CAPTIONS -> { cycleSubtitles(); return true }
                 KeyEvent.KEYCODE_BACK -> when {
                     st.panel != null -> { setPanel(null); return true }
                     st.controls -> { showControls(false); return true }
@@ -712,9 +745,10 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        // Leaving PiP (closing the small window) also lands here: stop streaming to save data / the connection slot.
+        // Back to TuTu: the preview behind takes the stream over. Leaving the app (or closing PiP): stop streaming.
+        if (isFinishing) return
         player?.pause()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isInPictureInPictureMode) player?.stop()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isInPictureInPictureMode) Streams.stopShared()
     }
 
     override fun onResume() {
@@ -728,8 +762,12 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        player?.release()
+        // Hand the shared player back (not released): the Live TV preview continues with this channel.
+        ui.value.channel?.id?.let { Streams.nowPlaying.value = it }
+        detachPlayer()
         player = null
+        Streams.fullscreen = false
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ Streams.stopIfUnattended() }, 1500)
         super.onDestroy()
     }
 

@@ -59,7 +59,7 @@ fun MiniPlayer(mini: MiniPlayback, focus: FocusRequester, modifier: Modifier = M
     fun full() { close(); PlayerActivity.start(context, mini.channelId, mini.ids, mini.title) }
     Column(modifier.width(340.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xF0101114))
         .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))) {
-        PreviewPlayer(ch, Modifier.fillMaxWidth().height(191.dp))
+        PreviewPlayer(ch, Modifier.fillMaxWidth().height(191.dp), mini = true)
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(ch?.name ?: "", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = 4.dp))

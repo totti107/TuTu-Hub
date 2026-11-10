@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -30,7 +31,35 @@ object Streams {
     /** Small preview players (Live TV preview, mini player): stopped before full screen starts so it gets the video decoder. */
     private val previews = java.util.Collections.newSetFromMap(java.util.WeakHashMap<ExoPlayer, Boolean>())
     fun registerPreview(p: ExoPlayer) { previews += p }
-    fun stopPreviews() { previews.toList().forEach { runCatching { it.stop(); it.clearMediaItems() } } }
+    fun stopPreviews() { previews.toList().forEach { runCatching { it.stop(); it.clearMediaItems() } }; stopShared() }
+
+    // ---------------- One live player for the whole app ----------------
+    // The preview box, the mini player and full screen all use the same player, so opening full screen just
+    // makes the channel bigger (no second connection, no stutter) and Back shrinks it again without stopping.
+
+    private var sharedPlayer: ExoPlayer? = null
+    /** Channel the shared player is playing. */
+    var sharedChannel: String? = null
+    /** Full screen is open (previews must not stop the player when their screen goes to the background). */
+    @Volatile var fullscreen = false
+    /** Small screens showing the shared player right now. */
+    var previewsShown = 0
+    /** Last channel watched full screen: the Live TV preview follows it when you come back. */
+    val nowPlaying = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    fun shared(context: Context, softwareFirst: Boolean = false): ExoPlayer = sharedPlayer
+        ?: player(context.applicationContext, live = true, (context.applicationContext as com.arena.tv.ArenaApp).container.prefs.value, softwareFirst)
+            .also { it.volume = 1f; sharedPlayer = it }
+
+    /** Throws the shared player away (decoder trouble) and makes a new one. */
+    fun resetShared(context: Context, softwareFirst: Boolean): ExoPlayer { releaseShared(); return shared(context, softwareFirst) }
+    fun releaseShared() { runCatching { sharedPlayer?.release() }; sharedPlayer = null; sharedChannel = null }
+    fun stopShared() { runCatching { sharedPlayer?.stop() }; sharedChannel = null }
+    /** Is the shared player already on this channel (playing or loading)? */
+    fun isPlaying(channelId: String): Boolean = sharedChannel == channelId &&
+        sharedPlayer?.let { it.playbackState == Player.STATE_READY || it.playbackState == Player.STATE_BUFFERING } == true
+    /** Nobody is showing the player any more (e.g. full screen closed with no preview behind it): stop streaming. */
+    fun stopIfUnattended() { if (!fullscreen && previewsShown == 0) stopShared() }
 
     /** "video/avc · c2.mtk.avc.decoder" — which decoder failed, for the error message. */
     fun decoderDetail(e: Throwable?): String? {

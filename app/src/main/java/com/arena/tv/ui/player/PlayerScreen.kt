@@ -69,6 +69,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.foundation.border
@@ -171,6 +172,7 @@ fun PlayerScreen(activity: PlayerActivity, player: ExoPlayer, state: PlayerUi, z
         }
 
         if (!state.inPip && !state.controls && LocalContext.current.app.prefs.value.clockAlways) CornerClock(Modifier.align(Alignment.TopEnd))
+        state.notice?.let { NoticePill(it, Modifier.align(Alignment.TopCenter)) }
         if (!state.inPip && !state.controls && state.panel == null && state.scores.isNotEmpty())
             ScoreOverlay(state.scores, state.goals, LocalContext.current.app.prefs.value.scoreStyle == "compact", Modifier.align(Alignment.TopStart))
         if (!state.inPip) {
@@ -275,7 +277,8 @@ private fun Controls(a: PlayerActivity, s: PlayerUi, touched: () -> Unit) {
                             tint = if (s.recording) ArenaColors.Live else Color.White, onClick = t { a.toggleRecord() })
                         Dock(Icons.Rounded.History, "Recently watched", focus, onClick = t { a.setPanel("recent") })
                         DockDivider()
-                        DockText("CC", "Subtitles", focus, onClick = t { a.setPanel("subs") })
+                        DockText("CC", "Subtitles: press to switch", focus, onClick = t { a.cycleSubtitles() })
+                        Dock(Icons.Rounded.Tune, "Subtitle options & AI translation", focus, onClick = t { a.setPanel("subs") })
                         Dock(Icons.Rounded.GraphicEq, "Audio track", focus, onClick = t { a.setPanel("audio") })
                         DockText(s.badges.firstOrNull { it in setOf("4K", "FHD", "HD", "SD") } ?: "Auto", "Video quality", focus, onClick = t { a.setPanel("quality") })
                         Dock(Icons.Rounded.AspectRatio, "Zoom", focus, onClick = t(a::resize))
@@ -523,8 +526,10 @@ internal fun SubsList(app: com.arena.tv.AppContainer, options: List<TrackOption>
     val downloading by app.translator.downloading.collectAsState()
     LazyColumn {
         item {
-            Text("SUBTITLES", color = ArenaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 4.dp))
+            Text("SUBTITLES INCLUDED BY YOUR PROVIDER", color = ArenaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 20.dp, top = 4.dp))
+            Text("Made by people and sent with the video — the most accurate choice.", color = ArenaColors.Muted, fontSize = 12.sp,
+                modifier = Modifier.padding(start = 20.dp, end = 16.dp, bottom = 4.dp))
         }
         if (options.isEmpty()) item {
             Text(if (prefs.subtitleTranslate.isNotEmpty()) "$what has no subtitles or captions, so there's nothing to translate here."
@@ -534,8 +539,10 @@ internal fun SubsList(app: com.arena.tv.AppContainer, options: List<TrackOption>
             items(options) { o -> PanelRow(o.label, selected = o.selected) { onPick(o) } }
         }
         item {
-            Text("TRANSLATE (AI, ON THIS DEVICE)", color = ArenaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp))
+            Text("AI TRANSLATION · MADE ON THIS TV", color = ArenaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 20.dp, top = 16.dp))
+            Text("Translates the subtitles above into another language. Use it when your language isn't listed above.",
+                color = ArenaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(start = 20.dp, end = 16.dp, bottom = 4.dp))
         }
         downloading?.let { d -> item {
             Text("⬇ Downloading ${com.arena.tv.data.SubtitleTranslator.name(d)}… (one time)", color = ArenaColors.Accent, fontSize = 13.sp,
@@ -546,4 +553,11 @@ internal fun SubsList(app: com.arena.tv.AppContainer, options: List<TrackOption>
             PanelRow("Translate to $name", selected = prefs.subtitleTranslate == code) { onTranslate(code) }
         }
     }
+}
+
+/** "Subtitles: English (2/3)" for a moment after pressing CC. */
+@Composable
+fun NoticePill(text: String, modifier: Modifier = Modifier) {
+    Text(text, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+        modifier = modifier.padding(top = 90.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xE6141518)).padding(horizontal = 18.dp, vertical = 10.dp))
 }

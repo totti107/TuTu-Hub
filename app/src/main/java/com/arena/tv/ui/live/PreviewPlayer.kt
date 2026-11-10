@@ -9,6 +9,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,30 +34,50 @@ import com.arena.tv.data.ChannelEntity
 import com.arena.tv.ui.player.Streams
 
 /**
- * Small inline player for the preview pane. It stops when the screen is left (and when the
- * full-screen player opens), so it never holds a second connection to the provider.
+ * Small player for the preview box and the mini player. It shows the app's one shared live player, so opening
+ * full screen continues the same stream (no reconnect) and coming back keeps it playing.
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun PreviewPlayer(channel: ChannelEntity?, modifier: Modifier = Modifier) {
+fun PreviewPlayer(channel: ChannelEntity?, modifier: Modifier = Modifier, mini: Boolean = false) {
     val context = LocalContext.current
-    val player = remember { Streams.player(context, live = true).apply { volume = 1f; Streams.registerPreview(this) } }
-    var state by remember { mutableStateOf("idle") }
+    val miniActive by context.app.miniPlayer.collectAsState()
+    if (!mini && miniActive != null) {
+        // The mini player has the stream; don't fight over it.
+        Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+            Text("Playing in the mini player", color = Color(0x99FFFFFF), fontSize = 14.sp)
+        }
+        return
+    }
+    val player = remember { Streams.shared(context) }
+    var state by remember { mutableStateOf(if (channel != null && Streams.isPlaying(channel.id)) "ready" else "idle") }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var view by remember { mutableStateOf<PlayerView?>(null) }
 
     DisposableEffect(player) {
+        Streams.previewsShown++
         val l = object : Player.Listener {
             override fun onPlaybackStateChanged(s: Int) { state = when (s) { Player.STATE_BUFFERING -> "buffering"; Player.STATE_READY -> "ready"; else -> state } }
             override fun onPlayerError(error: PlaybackException) { state = "error" }
         }
         player.addListener(l)
-        onDispose { player.removeListener(l); player.release() }
+        onDispose {
+            player.removeListener(l)
+            Streams.previewsShown--
+            // Left this screen without opening full screen: stop streaming shortly after.
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ Streams.stopIfUnattended() }, 1500)
+        }
     }
     DisposableEffect(lifecycle, player) {
         val obs = LifecycleEventObserver { _, e ->
             when (e) {
-                Lifecycle.Event.ON_STOP -> player.stop()
-                Lifecycle.Event.ON_START -> if (player.mediaItemCount > 0) { player.prepare(); player.play() }
+                // Leaving the app stops the stream — but not when full screen took it over.
+                Lifecycle.Event.ON_STOP -> if (!Streams.fullscreen) Streams.stopShared()
+                Lifecycle.Event.ON_START -> if (player.mediaItemCount > 0 && player.playbackState == Player.STATE_IDLE && channel != null) {
+                    player.prepare(); player.play(); Streams.sharedChannel = channel.id
+                }
+                // Back from full screen: show the picture here again.
+                Lifecycle.Event.ON_RESUME -> view?.let { v -> v.player = null; v.player = player }
                 else -> Unit
             }
         }
@@ -74,10 +95,13 @@ fun PreviewPlayer(channel: ChannelEntity?, modifier: Modifier = Modifier) {
         onDispose { player.removeListener(l) }
     }
     LaunchedEffect(channel?.id, alternate) {
-        if (channel == null) { player.stop(); player.clearMediaItems(); state = "idle"; return@LaunchedEffect }
+        if (channel == null) return@LaunchedEffect
+        // Already on this channel (e.g. back from full screen): keep playing, no reconnect.
+        if (!alternate && Streams.isPlaying(channel.id)) { state = if (player.playbackState == Player.STATE_READY) "ready" else "buffering"; return@LaunchedEffect }
         state = "buffering"
         val r = runCatching { context.app.streams.resolve(channel, alternate) }.getOrNull() ?: run { state = "error"; return@LaunchedEffect }
         player.setMediaSource(Streams.source(context, context.app.http, r.url, r.userAgent, channel.referrer, r.forceHls))
+        Streams.sharedChannel = channel.id
         player.prepare(); player.play()
     }
 
@@ -89,6 +113,7 @@ fun PreviewPlayer(channel: ChannelEntity?, modifier: Modifier = Modifier) {
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     this.player = player
+                    view = this
                 }
             },
             modifier = Modifier.fillMaxSize(),

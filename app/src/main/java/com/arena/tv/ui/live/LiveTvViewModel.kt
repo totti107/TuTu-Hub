@@ -60,6 +60,15 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
     val settings = c.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     init {
+        // Back from full screen: select the channel you were watching (its stream keeps playing in the preview).
+        viewModelScope.launch {
+            com.arena.tv.ui.player.Streams.nowPlaying.collect { id ->
+                if (id != null) {
+                    c.db.channels().byId(id)?.let { selected.value = it }
+                    com.arena.tv.ui.player.Streams.nowPlaying.value = null
+                }
+            }
+        }
         // Shortcuts from the Home screen ("Favorites", "TV Guide").
         viewModelScope.launch {
             c.liveRequest.collect { r ->

@@ -205,6 +205,7 @@ class VodPlayerActivity : ComponentActivity() {
                     }, modifier = Modifier.fillMaxSize())
 
                     if (!st.controls && prefs.clockAlways) CornerClock(Modifier.align(Alignment.TopEnd))
+                    st.notice?.let { NoticePill(it, Modifier.align(Alignment.TopCenter)) }
                     if (translating) TranslatedSubtitleText(subs.text.value, app.translator.status.collectAsState().value, Streams.subtitleScale(prefs), st.controls)
                     AnimatedVisibility(st.controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
                         VodControls(playerRef.value ?: player, st, title.value, subtitle.value, hasNext = next() != null,
@@ -212,7 +213,7 @@ class VodPlayerActivity : ComponentActivity() {
                             onSeek = { d -> player.seekTo((player.currentPosition + d).coerceAtLeast(0)) }, onRestart = { player.seekTo(0); player.play() },
                             onNext = { next()?.let(::playEpisode) }, onPanel = { p -> ui.value = ui.value.copy(panel = p, controls = true) },
                             onResize = { ui.value = ui.value.copy(resize = (ui.value.resize + 1) % 3) },
-                            touched = { lastInput.longValue = System.currentTimeMillis() })
+                            touched = { lastInput.longValue = System.currentTimeMillis() }, onCycleSubs = { cycleSubtitles() })
                     }
                     VodPanel(app, playerRef.value ?: player, st.panel, onClose = { ui.value = ui.value.copy(panel = null) },
                         onPick = { type, o -> TrackTools.select(player, type, o); ui.value = ui.value.copy(panel = null) }) { lang -> setTranslate(lang) }
@@ -277,6 +278,20 @@ class VodPlayerActivity : ComponentActivity() {
         android.widget.Toast.makeText(this, "Using the software decoder (it may be slow on big files)", android.widget.Toast.LENGTH_LONG).show()
     }
 
+    private var noticeJob: Job? = null
+    /** CC button: next subtitle each press (Off → first language → … → Off). */
+    private fun cycleSubtitles() {
+        val options = TrackTools.list(player, androidx.media3.common.C.TRACK_TYPE_TEXT)
+        val msg = if (options.isEmpty()) "No subtitles in this title" else {
+            val cur = options.indexOfFirst { it.selected }
+            val next = if (cur + 1 >= options.size) null else options[cur + 1]
+            TrackTools.select(player, androidx.media3.common.C.TRACK_TYPE_TEXT, next)
+            if (next == null) "Subtitles: Off" else "Subtitles: ${next.label}  (${cur + 2}/${options.size})"
+        }
+        ui.value = ui.value.copy(notice = msg)
+        noticeJob?.cancel(); noticeJob = lifecycleScope.launch { delay(2500); ui.value = ui.value.copy(notice = null) }
+    }
+
     /** Subtitles panel: translate into a language ("" = off), remembered for next time. */
     private fun setTranslate(lang: String) = lifecycleScope.launch {
         app.settings.updatePrefs { it.copy(subtitleTranslate = lang) }
@@ -302,7 +317,7 @@ class VodPlayerActivity : ComponentActivity() {
                 android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if (player.isPlaying) player.pause() else player.play(); ui.value = ui.value.copy(controls = true); return true }
                 android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { player.seekTo(player.currentPosition + 30_000); return true }
                 android.view.KeyEvent.KEYCODE_MEDIA_REWIND -> { player.seekTo((player.currentPosition - 30_000).coerceAtLeast(0)); return true }
-                android.view.KeyEvent.KEYCODE_CAPTIONS -> { ui.value = st.copy(panel = "subs", controls = true); return true }
+                android.view.KeyEvent.KEYCODE_CAPTIONS -> { cycleSubtitles(); return true }
                 android.view.KeyEvent.KEYCODE_DPAD_LEFT -> if (!st.controls) { player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)); ui.value = st.copy(controls = true); return true }
                 android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> if (!st.controls) { player.seekTo(player.currentPosition + 10_000); ui.value = st.copy(controls = true); return true }
                 android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN ->

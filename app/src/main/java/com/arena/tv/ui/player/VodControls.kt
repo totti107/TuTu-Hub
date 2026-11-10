@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -69,7 +70,7 @@ import com.arena.tv.ui.theme.ArenaColors
 import kotlinx.coroutines.delay
 
 /** What the movie player overlay shows. */
-data class VodUi(val controls: Boolean = true, val panel: String? = null, val resize: Int = 0, val playing: Boolean = true)
+data class VodUi(val controls: Boolean = true, val panel: String? = null, val resize: Int = 0, val playing: Boolean = true, val notice: String? = null)
 
 private fun clock(ms: Long): String {
     val s = (ms / 1000).coerceAtLeast(0); val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
@@ -81,7 +82,7 @@ private fun clock(ms: Long): String {
 fun VodControls(
     player: Player, ui: VodUi, title: String, subtitle: String?, hasNext: Boolean,
     onBack: () -> Unit, onTogglePlay: () -> Unit, onSeek: (Long) -> Unit, onRestart: () -> Unit, onNext: () -> Unit,
-    onPanel: (String) -> Unit, onResize: () -> Unit, touched: () -> Unit,
+    onPanel: (String) -> Unit, onResize: () -> Unit, touched: () -> Unit, onCycleSubs: () -> Unit = {},
 ) {
     var pos by remember { mutableLongStateOf(player.currentPosition) }
     var dur by remember { mutableLongStateOf(player.duration) }
@@ -142,7 +143,8 @@ fun VodControls(
                     Dock(Icons.Rounded.Forward10, "Forward 10 seconds", focus, onClick = t { onSeek(10_000) })
                     if (hasNext) Dock(Icons.Rounded.SkipNext, "Next episode", focus, onClick = t(onNext))
                     DockDivider()
-                    DockText("CC", "Subtitles & translate", focus, onClick = t { onPanel("subs") })
+                    DockText("CC", "Subtitles: press to switch", focus, onClick = t(onCycleSubs))
+                    Dock(Icons.Rounded.Tune, "Subtitle options & AI translation", focus, onClick = t { onPanel("subs") })
                     Dock(Icons.Rounded.GraphicEq, "Audio track", focus, onClick = t { onPanel("audio") })
                     Dock(Icons.Rounded.AspectRatio, "Zoom", focus, onClick = t(onResize))
                 }
