@@ -131,6 +131,8 @@ class PlayerActivity : ComponentActivity() {
     private val badCaptions = HashSet<String>()
     /** Subtitles were switched off only because of one channel's bad captions: switched back on for the next channel. */
     private var captionsOffByUs = false
+    /** The current stream was opened with the hidden-caption search. */
+    private var captionSearch = false
     private var playJob: Job? = null
     private var lastIndex: Int? = null
     private var sleepJob: Job? = null
@@ -396,13 +398,20 @@ class PlayerActivity : ComponentActivity() {
     private var noticeJob: Job? = null
     fun notice(text: String) {
         ui.value = ui.value.copy(notice = text)
-        noticeJob?.cancel(); noticeJob = lifecycleScope.launch { delay(2500); ui.value = ui.value.copy(notice = null) }
+        noticeJob?.cancel(); noticeJob = lifecycleScope.launch { delay(1800); ui.value = ui.value.copy(notice = null) }
     }
 
     /** CC button: next subtitle each press (Off → first language → … → Off). */
     fun cycleSubtitles() {
         val options = tracks(androidx.media3.common.C.TRACK_TYPE_TEXT)
-        if (options.isEmpty()) { notice("No subtitles on this channel"); return }
+        if (options.isEmpty()) {
+            val ch = ui.value.channel
+            if (ch != null && app.prefs.value.hiddenCaptions && !captionSearch && ch.id !in badCaptions) {
+                notice("Looking for hidden captions…"); play(ch, forceHls = triedHls); return
+            }
+            notice(if (app.prefs.value.hiddenCaptions) "No subtitles on this channel" else "No subtitles · hidden captions: Settings → Playback")
+            return
+        }
         val cur = options.indexOfFirst { it.selected }
         val next = if (cur + 1 >= options.size) null else options[cur + 1]
         selectTrack(androidx.media3.common.C.TRACK_TYPE_TEXT, next)
@@ -518,8 +527,11 @@ class PlayerActivity : ComponentActivity() {
         val ds = OkHttpDataSource.Factory(app.http)
             .setUserAgent(ch.userAgent?.ifBlank { null } ?: "Mozilla/5.0 (Linux; Android) TuTuTV/1.0")
         ch.referrer?.let { ds.setDefaultRequestProperties(mapOf("Referer" to it)) }
-        // Streams are read exactly as in 3.13.2 (the forced caption search broke playback on some TVs).
-        return DefaultMediaSourceFactory(this).setDataSourceFactory(ds)
+        // Hidden captions are only looked for when switched on in Settings → Playback (it broke playback on some TVs).
+        val captions = app.prefs.value.hiddenCaptions && ch.id !in badCaptions
+        captionSearch = captions
+        return if (captions) DefaultMediaSourceFactory(this, Streams.extractors(true)).setDataSourceFactory(ds)
+        else DefaultMediaSourceFactory(this).setDataSourceFactory(ds)
     }
 
     private fun load() {
@@ -538,7 +550,7 @@ class PlayerActivity : ComponentActivity() {
                 player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build() }
             }
             // The preview / mini player was already on this channel: keep its stream (no reconnect, no stutter).
-            if (adopt) { ui.value = ui.value.copy(buffering = player?.playbackState != Player.STATE_READY, format = ui.value.format ?: "TS") }
+            if (adopt) { captionSearch = false; ui.value = ui.value.copy(buffering = player?.playbackState != Player.STATE_READY, format = ui.value.format ?: "TS") }
             else play(ch, forceHls = false)
             val fav = id in app.db.user().favoriteIds().first()
             ui.value = ui.value.copy(channel = ch, index = index, total = ids.size, favorite = fav, error = null, now = null, next = null, videoInfo = null)
@@ -618,6 +630,13 @@ class PlayerActivity : ComponentActivity() {
         if (ch != null && !triedHls && hasCause<UnrecognizedInputFormatException>(e)) {
             triedHls = true
             play(ch, forceHls = true)
+            return
+        }
+        // Picture failed while looking for hidden captions: try again without the search first.
+        if (ch != null && decoding && captionSearch && ch.id !in badCaptions) {
+            badCaptions += ch.id
+            notice("Hidden captions turned off for this channel")
+            lifecycleScope.launch { delay(1200); play(ch, forceHls = triedHls) }
             return
         }
         // The picture / sound decoder refused: free previews and retry, then switch to the software decoders.

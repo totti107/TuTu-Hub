@@ -289,7 +289,7 @@ class VodPlayerActivity : ComponentActivity() {
             if (next == null) "Subtitles: Off" else "Subtitles: ${next.label}  (${cur + 2}/${options.size})"
         }
         ui.value = ui.value.copy(notice = msg)
-        noticeJob?.cancel(); noticeJob = lifecycleScope.launch { delay(2500); ui.value = ui.value.copy(notice = null) }
+        noticeJob?.cancel(); noticeJob = lifecycleScope.launch { delay(1800); ui.value = ui.value.copy(notice = null) }
     }
 
     /** Subtitles panel: translate into a language ("" = off), remembered for next time. */

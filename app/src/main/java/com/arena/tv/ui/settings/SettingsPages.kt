@@ -147,6 +147,9 @@ fun LazyListScope.playbackItems(p: Prefs, set: ((Prefs) -> Prefs) -> Unit, start
             Text("Subtitles come two ways: many movies and some channels include subtitles from your provider (made by people — " +
                 "press CC while watching to switch between them). AI translation makes extra languages on this TV from those subtitles.",
                 color = ArenaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
+            SwitchRow("Look for hidden captions on live channels", "Some US channels hide closed captions inside the video. Turn on to find them " +
+                "(needed to show or translate them). Leave off if channels stop playing — on some TVs it causes trouble; TuTu then switches it off for that channel.",
+                p.hiddenCaptions) { v -> set { it.copy(hiddenCaptions = v) } }
             ChoiceRow("Translate subtitles (AI)", "Only needed when your language isn't among the provider's subtitles. Each language downloads once (about 30 MB).",
                 listOf("" to "Off") + com.arena.tv.data.SubtitleTranslator.LANGS, p.subtitleTranslate) { v -> set { it.copy(subtitleTranslate = v) }; startPack(v) }
             if (p.subtitleTranslate.isNotEmpty()) TranslatorStatus(p.subtitleTranslate)

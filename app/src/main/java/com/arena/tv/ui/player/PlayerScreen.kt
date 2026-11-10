@@ -555,9 +555,11 @@ internal fun SubsList(app: com.arena.tv.AppContainer, options: List<TrackOption>
     }
 }
 
-/** "Subtitles: English (2/3)" for a moment after pressing CC. */
+/** "Subtitles: English (2/3)" for a moment after pressing CC: small, just above the button bar. */
 @Composable
 fun NoticePill(text: String, modifier: Modifier = Modifier) {
-    Text(text, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
-        modifier = modifier.padding(top = 90.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xE6141518)).padding(horizontal = 18.dp, vertical = 10.dp))
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        Text(text, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(bottom = 150.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xB3141518)).padding(horizontal = 12.dp, vertical = 6.dp))
+    }
 }

@@ -53,3 +53,7 @@ and a "⚠ Software decoder" badge, and translation waits for live caption lines
 opening full screen continues the preview's stream (no reconnect/stutter), Back keeps the little screen playing.
 CC button cycles subtitles; "Subtitle options" button opens the panel. If this causes playback trouble,
 the previous version is 3.14.8 (build 1023), which played fine on the TV.
+
+3.15.1: hidden-caption search is back ONLY as an opt-in (Settings → Playback → "Look for hidden captions", off by
+default). If the picture fails while it's on, TuTu turns it off for that channel and retries. Notes are small, above
+the button bar. Known good: 3.14.8 (build 1023), 3.15.0 (build 1024).

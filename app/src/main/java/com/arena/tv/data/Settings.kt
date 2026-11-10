@@ -82,6 +82,8 @@ data class Prefs(
     val audioLang: String = "",
     /** Preferred subtitle language ("" = off unless the stream forces them). */
     val subtitleLang: String = "",
+    /** Look for closed captions hidden inside live channels (off: it broke playback on some TVs). */
+    val hiddenCaptions: Boolean = false,
     /** Translate subtitles on the device into this language ("" = off). */
     val subtitleTranslate: String = "",
     /** small, normal, large, huge */
