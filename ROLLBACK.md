@@ -44,3 +44,7 @@ needs uninstalling first (loses settings unless you use Settings → Backup & re
 3.14.5/3.14.6 on the TV: movies played but some went "subtitles couldn't be read" → "Using the software decoder" →
 very slow and laggy. Cause: the restart after the subtitle error came too fast, the hardware decoder was still busy,
 so it fell to the software decoder. Fixed in 3.14.7.
+
+After 3.14.5/3.14.6 live was also "super laggy": in 3.14.4–3.14.6 a channel that fell back to the software decoder
+kept the software decoder for every following channel (fixed in 3.14.7). 3.14.8 shows the decoder in Stream info
+and a "⚠ Software decoder" badge, and translation waits for live caption lines to settle (less CPU).

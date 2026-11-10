@@ -74,6 +74,9 @@ data class PlayerUi(
     val casting: String? = null,
     /** How the stream arrives: "TS" or "HLS" (shown as a badge and in Stream info). */
     val format: String? = null,
+    /** The video decoder in use, e.g. "c2.mtk.avc.decoder"; software ones make playback slow. */
+    val decoder: String? = null,
+    val softwareDecoder: Boolean = false,
 )
 
 /** One choice in the audio / subtitle / quality panels. groupIndex -1 = Auto (or Off for subtitles). */
@@ -373,6 +376,7 @@ class PlayerActivity : ComponentActivity() {
             (v?.bitrate?.takeIf { it > 0 } ?: v?.averageBitrate?.takeIf { it > 0 })?.let { "Bitrate" to "%.1f Mbps".format(it / 1_000_000.0) },
             "Captions" to if (hasCaptions) "Yes — can be shown or translated (CC)" else "None on this channel",
             "Buffered" to "${(p.totalBufferedDuration / 1000).coerceAtLeast(0)} s ahead",
+            ui.value.decoder?.let { "Decoder" to "$it · " + if (ui.value.softwareDecoder) "SOFTWARE (slow — unplug the TV for 30 s to free the hardware decoder)" else "hardware" },
             ui.value.channel?.url?.let { u -> "Server" to (Uri.parse(u.removePrefix("stalker:")).host ?: "Portal") },
         )
     }
@@ -455,6 +459,14 @@ class PlayerActivity : ComponentActivity() {
             .setLoadControl(Streams.loadControl(live = true, buffer = prefs.buffer))
             .build().apply {
                 playWhenReady = true
+                // Which video decoder the TV gave us (hardware = smooth, software = slow).
+                addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+                    override fun onVideoDecoderInitialized(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, decoderName: String,
+                                                           initializedTimestampMs: Long, initializationDurationMs: Long) {
+                        val sw = Streams.isSoftwareDecoder(decoderName)
+                        ui.value = ui.value.copy(decoder = decoderName, softwareDecoder = sw)
+                    }
+                })
                 Streams.applyLanguages(this, prefs)
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {

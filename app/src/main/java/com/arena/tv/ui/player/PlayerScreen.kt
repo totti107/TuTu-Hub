@@ -202,6 +202,7 @@ private fun Controls(a: PlayerActivity, s: PlayerUi, touched: () -> Unit) {
             Box(Modifier.padding(start = 2.dp, bottom = 14.dp).size(7.dp).clip(CircleShape).background(ArenaColors.Accent))
             Spacer(Modifier.width(18.dp))
             s.format?.let { Badge(it) }
+            if (s.softwareDecoder) Badge("⚠ Software decoder")
             s.badges.forEach { b -> Badge(b) }
             s.sleepAt?.let { Badge("☾ ${((it - now) / 60_000).coerceAtLeast(0) + 1} min") }
             Spacer(Modifier.weight(1f))

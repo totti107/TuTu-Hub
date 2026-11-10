@@ -44,6 +44,10 @@ object Streams {
         return null
     }
 
+    /** Software video decoders run on the TV's processor: fine on phones, too slow for HD on most TVs. */
+    fun isSoftwareDecoder(name: String) = name.startsWith("c2.android.") || name.startsWith("OMX.google.") || name.contains("ffmpeg", true) ||
+        name.contains(".sw.", true)
+
     /** "3840×2160 · HEVC 10-bit · HDR · 24 fps" for the video track (helps explain why a TV can't play a file). */
     fun videoDetail(p: androidx.media3.common.Player): String? {
         val f = p.currentTracks.groups.firstOrNull { it.type == androidx.media3.common.C.TRACK_TYPE_VIDEO }?.let { g ->

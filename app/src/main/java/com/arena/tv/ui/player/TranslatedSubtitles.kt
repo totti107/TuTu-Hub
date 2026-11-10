@@ -49,6 +49,8 @@ class TranslatedSubtitles(private val scope: CoroutineScope, private val player:
         if (raw.isEmpty()) { text.value = null; return }
         val to = target
         job = scope.launch {
+            // Live captions grow word by word: wait until the line settles, so the TV isn't translating constantly.
+            kotlinx.coroutines.delay(350)
             // A slow first download shows the original meanwhile.
             val out = runCatching { withTimeout(4_000) { c.translator.translate(raw, trackLang, to) } }.getOrNull()
             text.value = out ?: raw
