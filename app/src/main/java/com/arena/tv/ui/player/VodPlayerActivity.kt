@@ -7,6 +7,10 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -75,7 +79,9 @@ class VodPlayerActivity : ComponentActivity() {
     private var scrobbling = false
     private val title = mutableStateOf("")
     private val subtitle = mutableStateOf<String?>(null)
-    private val controlsVisible = mutableStateOf(true)
+    private val ui = mutableStateOf(VodUi())
+    private val lastInput = androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis())
+    private lateinit var subs: TranslatedSubtitles
     private val nextUp = mutableStateOf<EpisodeEntity?>(null)
     private val error = mutableStateOf<String?>(null)
 
@@ -88,12 +94,13 @@ class VodPlayerActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         player = Streams.player(this, live = false, app.prefs.value)
-        val subs = TranslatedSubtitles(lifecycleScope, player, app).also { player.addListener(it) }
+        subs = TranslatedSubtitles(lifecycleScope, player, app).also { player.addListener(it) }
         player.addListener(object : Player.Listener {
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 if (app.prefs.value.matchFrameRate) player.videoFormat?.frameRate?.let { Streams.matchFrameRate(this@VodPlayerActivity, it) }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                ui.value = ui.value.copy(playing = isPlaying)
                 if (isPlaying) { scrobble("start"); scrobbling = true } else if (scrobbling && player.playbackState != Player.STATE_ENDED) scrobble("pause")
                 if (!isPlaying) saveProgress()
             }
@@ -131,36 +138,44 @@ class VodPlayerActivity : ComponentActivity() {
 
         setContent {
             ArenaTheme {
-                Box(Modifier.fillMaxSize().background(Color.Black)) {
+                val st = ui.value
+                val prefs by app.prefs.collectAsState()
+                val translating = prefs.subtitleTranslate.isNotEmpty()
+                val touchTime = lastInput.longValue
+                // Controls hide 5 seconds after the last button press (not while a panel is open or paused).
+                LaunchedEffect(touchTime, st.controls, st.panel, st.playing) {
+                    if (st.controls && st.panel == null && st.playing) { delay(5000); ui.value = ui.value.copy(controls = false) }
+                }
+                Box(Modifier.fillMaxSize().background(Color.Black)
+                    .pointerInput(Unit) { detectTapGestures(onTap = { ui.value = ui.value.copy(controls = !ui.value.controls); lastInput.longValue = System.currentTimeMillis() }) }) {
                     AndroidView(factory = { ctx ->
                         PlayerView(ctx).apply {
                             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                             player = this@VodPlayerActivity.player
-                            setShowSubtitleButton(true)
-                            setShowNextButton(false); setShowPreviousButton(false)
-                            setShowFastForwardButton(true); setShowRewindButton(true)
-                            controllerShowTimeoutMs = 3500
-                            if (subs.active) subtitleView?.visibility = android.view.View.GONE
+                            useController = false
+                            setShutterBackgroundColor(android.graphics.Color.BLACK)
                             subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * Streams.subtitleScale(app.prefs.value))
-                            setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controlsVisible.value = v == android.view.View.VISIBLE })
                         }
+                    }, update = {
+                        it.subtitleView?.visibility = if (translating) android.view.View.GONE else android.view.View.VISIBLE
+                        it.resizeMode = when (st.resize) { 1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM; 2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                            else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT }
                     }, modifier = Modifier.fillMaxSize())
 
-                    if (!controlsVisible.value && app.prefs.value.clockAlways) CornerClock(Modifier.align(Alignment.TopEnd))
-                    if (subs.active) TranslatedSubtitleText(subs.text.value, app.translator.status.collectAsState().value,
-                        Streams.subtitleScale(app.prefs.value), controlsVisible.value)
-                    AnimatedVisibility(controlsVisible.value, enter = fadeIn(), exit = fadeOut()) {
-                        Row(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent))).padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { finish() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Color.White) }
-                            Column {
-                                Text(title.value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1)
-                                subtitle.value?.let { Text(it, color = Color(0xAAFFFFFF), fontSize = 13.sp, maxLines = 1) }
-                            }
-                        }
+                    if (!st.controls && prefs.clockAlways) CornerClock(Modifier.align(Alignment.TopEnd))
+                    if (translating) TranslatedSubtitleText(subs.text.value, app.translator.status.collectAsState().value, Streams.subtitleScale(prefs), st.controls)
+                    AnimatedVisibility(st.controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+                        VodControls(player, st, title.value, subtitle.value, hasNext = next() != null,
+                            onBack = { finish() }, onTogglePlay = { if (player.isPlaying) player.pause() else player.play() },
+                            onSeek = { d -> player.seekTo((player.currentPosition + d).coerceAtLeast(0)) }, onRestart = { player.seekTo(0); player.play() },
+                            onNext = { next()?.let(::playEpisode) }, onPanel = { p -> ui.value = ui.value.copy(panel = p, controls = true) },
+                            onResize = { ui.value = ui.value.copy(resize = (ui.value.resize + 1) % 3) },
+                            touched = { lastInput.longValue = System.currentTimeMillis() })
                     }
+                    VodPanel(app, player, st.panel, onClose = { ui.value = ui.value.copy(panel = null) },
+                        onPick = { type, o -> TrackTools.select(player, type, o); ui.value = ui.value.copy(panel = null) }) { lang -> setTranslate(lang) }
                     nextUp.value?.let { n ->
-                        Box(Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 90.dp)) {
+                        if (!st.controls) Box(Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 40.dp)) {
                             WhiteButton("Next: E${n.number}", { playEpisode(n) }, icon = Icons.Rounded.SkipNext)
                         }
                     }
@@ -171,6 +186,41 @@ class VodPlayerActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Subtitles panel: translate into a language ("" = off), remembered for next time. */
+    private fun setTranslate(lang: String) = lifecycleScope.launch {
+        app.settings.updatePrefs { it.copy(subtitleTranslate = lang) }
+        app.prefs.value = app.prefs.value.copy(subtitleTranslate = lang)
+        if (lang.isNotEmpty()) {
+            app.translator.download(lang)
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build()
+            subs.ensureTextTrack()
+        } else subs.text.value = null
+        ui.value = ui.value.copy(panel = null)
+    }
+
+    /** Remote: Back closes the panel / controls first; left / right seek when the controls are hidden. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        lastInput.longValue = System.currentTimeMillis()
+        val st = ui.value
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                android.view.KeyEvent.KEYCODE_BACK -> when {
+                    st.panel != null -> { ui.value = st.copy(panel = null); return true }
+                    st.controls -> { ui.value = st.copy(controls = false); return true }
+                }
+                android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if (player.isPlaying) player.pause() else player.play(); ui.value = ui.value.copy(controls = true); return true }
+                android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { player.seekTo(player.currentPosition + 30_000); return true }
+                android.view.KeyEvent.KEYCODE_MEDIA_REWIND -> { player.seekTo((player.currentPosition - 30_000).coerceAtLeast(0)); return true }
+                android.view.KeyEvent.KEYCODE_CAPTIONS -> { ui.value = st.copy(panel = "subs", controls = true); return true }
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> if (!st.controls) { player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)); ui.value = st.copy(controls = true); return true }
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> if (!st.controls) { player.seekTo(player.currentPosition + 10_000); ui.value = st.copy(controls = true); return true }
+                android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN ->
+                    if (!st.controls) { ui.value = st.copy(controls = true); return true }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun next(): EpisodeEntity? = episode?.let { e -> episodes.getOrNull(episodes.indexOf(e) + 1) }

@@ -291,10 +291,10 @@ private fun Controls(a: PlayerActivity, s: PlayerUi, touched: () -> Unit) {
 private fun cleanTitle(t: String?): String? = t?.replace(Regex("""\s*[\u1D2C-\u1D6A\u1D9C-\u1DBF\u02B0-\u02FF\u2070-\u209F]{2,}\s*"""), " ")?.trim()?.ifEmpty { t }
 
 @Composable
-private fun DockDivider() = Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(28.dp).background(Color(0x33FFFFFF)))
+internal fun DockDivider() = Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(28.dp).background(Color(0x33FFFFFF)))
 
 @Composable
-private fun Dock(icon: ImageVector, desc: String, onFocus: (String) -> Unit, modifier: Modifier = Modifier, primary: Boolean = false,
+internal fun Dock(icon: ImageVector, desc: String, onFocus: (String) -> Unit, modifier: Modifier = Modifier, primary: Boolean = false,
                  enabled: Boolean = true, tint: Color = Color.White, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val bg = when { focused -> Color.White; primary -> Color(0x33FFFFFF); else -> Color.Transparent }
@@ -309,7 +309,7 @@ private fun Dock(icon: ImageVector, desc: String, onFocus: (String) -> Unit, mod
 }
 
 @Composable
-private fun DockText(text: String, desc: String, onFocus: (String) -> Unit, onClick: () -> Unit) {
+internal fun DockText(text: String, desc: String, onFocus: (String) -> Unit, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Box(Modifier.height(48.dp).widthIn(min = 48.dp).clip(RoundedCornerShape(16.dp)).background(if (focused) Color.White else Color.Transparent)
         .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus(desc) }
@@ -360,7 +360,7 @@ private fun Panel(a: PlayerActivity, s: PlayerUi, ids: List<String>) {
 }
 
 @Composable
-private fun PanelRow(label: String, sub: String? = null, selected: Boolean = false, logo: ChannelEntity? = null, onClick: () -> Unit) {
+internal fun PanelRow(label: String, sub: String? = null, selected: Boolean = false, logo: ChannelEntity? = null, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp))
         .background(if (selected) ArenaColors.AccentDim else Color.Transparent).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -497,19 +497,25 @@ private fun ScorePill(g: Game, goal: Boolean) {
 @Composable
 private fun SubsPanel(a: PlayerActivity) {
     val options = remember { a.tracks(C.TRACK_TYPE_TEXT) }
-    val prefs by a.app.prefs.collectAsState()
-    val downloading by a.app.translator.downloading.collectAsState()
+    SubsList(a.app, options, "This channel", { a.selectTrack(C.TRACK_TYPE_TEXT, it) }) { a.setTranslate(it) }
+}
+
+/** Subtitle tracks + AI translation choices (live channels and movies share it). */
+@Composable
+internal fun SubsList(app: com.arena.tv.AppContainer, options: List<TrackOption>, what: String, onPick: (TrackOption?) -> Unit, onTranslate: (String) -> Unit) {
+    val prefs by app.prefs.collectAsState()
+    val downloading by app.translator.downloading.collectAsState()
     LazyColumn {
         item {
-            Text("THIS CHANNEL'S SUBTITLES", color = ArenaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+            Text("SUBTITLES", color = ArenaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 4.dp))
         }
         if (options.isEmpty()) item {
-            Text(if (prefs.subtitleTranslate.isNotEmpty()) "This channel sends no subtitles or captions, so there's nothing to translate here."
-                else "This channel sends no subtitles or captions.", color = ArenaColors.Muted, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            Text(if (prefs.subtitleTranslate.isNotEmpty()) "$what has no subtitles or captions, so there's nothing to translate here."
+                else "$what has no subtitles or captions.", color = ArenaColors.Muted, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         } else {
-            item { PanelRow("Off", selected = options.none { it.selected }) { a.selectTrack(C.TRACK_TYPE_TEXT, null) } }
-            items(options) { o -> PanelRow(o.label, selected = o.selected) { a.selectTrack(C.TRACK_TYPE_TEXT, o) } }
+            item { PanelRow("Off", selected = options.none { it.selected }) { onPick(null) } }
+            items(options) { o -> PanelRow(o.label, selected = o.selected) { onPick(o) } }
         }
         item {
             Text("TRANSLATE (AI, ON THIS DEVICE)", color = ArenaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
@@ -519,9 +525,9 @@ private fun SubsPanel(a: PlayerActivity) {
             Text("⬇ Downloading ${com.arena.tv.data.SubtitleTranslator.name(d)}… (one time)", color = ArenaColors.Accent, fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         } }
-        item { PanelRow("Don't translate", selected = prefs.subtitleTranslate.isEmpty()) { a.setTranslate("") } }
+        item { PanelRow("Don't translate", selected = prefs.subtitleTranslate.isEmpty()) { onTranslate("") } }
         items(com.arena.tv.data.SubtitleTranslator.LANGS) { (code, name) ->
-            PanelRow("Translate to $name", selected = prefs.subtitleTranslate == code) { a.setTranslate(code) }
+            PanelRow("Translate to $name", selected = prefs.subtitleTranslate == code) { onTranslate(code) }
         }
     }
 }
