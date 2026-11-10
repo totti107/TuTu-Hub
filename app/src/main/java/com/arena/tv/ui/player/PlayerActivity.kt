@@ -72,6 +72,8 @@ data class PlayerUi(
     val recording: Boolean = false,
     /** Name of the Chromecast / Google TV it's playing on. */
     val casting: String? = null,
+    /** How the stream arrives: "TS" or "HLS" (shown as a badge and in Stream info). */
+    val format: String? = null,
 )
 
 /** One choice in the audio / subtitle / quality panels. groupIndex -1 = Auto (or Off for subtitles). */
@@ -330,6 +332,40 @@ class PlayerActivity : ComponentActivity() {
         return out
     }
 
+    /** Stream info: switch between TS and HLS for this channel (when the provider offers both). */
+    fun switchFormat() {
+        val ch = ui.value.channel ?: return
+        if (!app.streams.hasAlternate(ch)) { toast("This channel only comes in one format"); return }
+        triedAlt = !triedAlt; retries = 0
+        ui.value = ui.value.copy(error = null)
+        play(ch, forceHls = false)
+        setPanel(null)
+    }
+    fun canSwitchFormat() = ui.value.channel?.let { app.streams.hasAlternate(it) } == true
+
+    /** Details for the Stream info panel. */
+    fun streamInfo(): List<Pair<String, String>> {
+        val p = player ?: return emptyList()
+        val v = p.videoFormat; val au = p.audioFormat
+        val hasCaptions = p.currentTracks.groups.any { it.type == androidx.media3.common.C.TRACK_TYPE_TEXT }
+        return listOfNotNull(
+            "Format" to when (ui.value.format) {
+                "HLS" -> "HLS (.m3u8) · small pieces, smoother on weak Wi-Fi"
+                "TS" -> "TS (MPEG-TS) · one continuous stream, starts fast"
+                else -> ui.value.format ?: "—"
+            },
+            v?.let { "Video" to listOfNotNull(it.height.takeIf { h -> h > 0 }?.let { h -> "${it.width}×$h" },
+                it.frameRate.takeIf { f -> f > 0 }?.let { f -> "${kotlin.math.round(f).toInt()} fps" },
+                it.sampleMimeType?.substringAfter('/')?.uppercase()?.replace("AVC", "H.264")?.replace("HEVC", "H.265")).joinToString(" · ") },
+            au?.let { "Audio" to listOfNotNull(audioName(it) ?: "${it.channelCount} ch", it.sampleMimeType?.substringAfter('/')?.uppercase(),
+                it.language?.let { l -> java.util.Locale(l).displayLanguage }).joinToString(" · ") },
+            (v?.bitrate?.takeIf { it > 0 } ?: v?.averageBitrate?.takeIf { it > 0 })?.let { "Bitrate" to "%.1f Mbps".format(it / 1_000_000.0) },
+            "Captions" to if (hasCaptions) "Yes — can be shown or translated (CC)" else "None on this channel",
+            "Buffered" to "${(p.totalBufferedDuration / 1000).coerceAtLeast(0)} s ahead",
+            ui.value.channel?.url?.let { u -> "Server" to (Uri.parse(u.removePrefix("stalker:")).host ?: "Portal") },
+        )
+    }
+
     /** CC panel: translate subtitles into a language ("" = off). Remembered for next time. */
     fun setTranslate(lang: String) = lifecycleScope.launch {
         app.settings.updatePrefs { it.copy(subtitleTranslate = lang) }
@@ -465,8 +501,14 @@ class PlayerActivity : ComponentActivity() {
             val r = runCatching { app.streams.resolve(ch, triedAlt) }.getOrElse {
                 ui.value = ui.value.copy(error = it.message ?: "Couldn't get the stream from the portal", buffering = false); return@launch
             }
+            val hls = forceHls || r.forceHls || r.url.contains("m3u8", true)
+            ui.value = ui.value.copy(format = when {
+                hls -> "HLS"
+                r.url.substringBefore('?').endsWith(".mp4", true) -> "MP4"
+                else -> "TS"
+            })
             val item = MediaItem.Builder().setUri(Uri.parse(r.url)).apply {
-                if (forceHls || r.forceHls || r.url.contains("m3u8", true)) setMimeType(MimeTypes.APPLICATION_M3U8)
+                if (hls) setMimeType(MimeTypes.APPLICATION_M3U8)
             }.build()
             p.setMediaSource(mediaSourceFactory(ch.copy(userAgent = r.userAgent)).createMediaSource(item))
             p.prepare()

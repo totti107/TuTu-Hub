@@ -69,6 +69,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.foundation.border
 import androidx.compose.ui.focus.onFocusChanged
@@ -199,6 +200,7 @@ private fun Controls(a: PlayerActivity, s: PlayerUi, touched: () -> Unit) {
             Text("tutu", color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
             Box(Modifier.padding(start = 2.dp, bottom = 14.dp).size(7.dp).clip(CircleShape).background(ArenaColors.Accent))
             Spacer(Modifier.width(18.dp))
+            s.format?.let { Badge(it) }
             s.badges.forEach { b -> Badge(b) }
             s.sleepAt?.let { Badge("☾ ${((it - now) / 60_000).coerceAtLeast(0) + 1} min") }
             Spacer(Modifier.weight(1f))
@@ -275,6 +277,7 @@ private fun Controls(a: PlayerActivity, s: PlayerUi, touched: () -> Unit) {
                         Dock(Icons.Rounded.GraphicEq, "Audio track", focus, onClick = t { a.setPanel("audio") })
                         DockText(s.badges.firstOrNull { it in setOf("4K", "FHD", "HD", "SD") } ?: "Auto", "Video quality", focus, onClick = t { a.setPanel("quality") })
                         Dock(Icons.Rounded.AspectRatio, "Zoom", focus, onClick = t(a::resize))
+                        Dock(Icons.Rounded.Info, "Stream info (TS / HLS)", focus, onClick = t { a.setPanel("info") })
                         DockDivider()
                         Dock(Icons.Rounded.Cast, if (s.casting != null) "Casting to ${s.casting}" else "Cast", focus,
                             tint = if (s.casting != null) ArenaColors.Accent else Color.White, onClick = t(a::cast))
@@ -332,7 +335,7 @@ private fun Badge(text: String) {
 private fun Panel(a: PlayerActivity, s: PlayerUi, ids: List<String>) {
     val title = when (s.panel) {
         "channels" -> "Channels"; "epg" -> "TV guide"; "recent" -> "Recently watched"; "scores" -> "Live scores"
-        "audio" -> "Audio"; "subs" -> "Subtitles"; "quality" -> "Video quality"; "sleep" -> "Sleep timer"; "cast" -> "Cast"; else -> ""
+        "audio" -> "Audio"; "subs" -> "Subtitles"; "quality" -> "Video quality"; "sleep" -> "Sleep timer"; "cast" -> "Cast"; "info" -> "Stream info"; else -> ""
     }
     Column(Modifier.width(380.dp).fillMaxHeight().background(Color(0xF00B0B0D)).padding(vertical = 12.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -348,6 +351,17 @@ private fun Panel(a: PlayerActivity, s: PlayerUi, ids: List<String>) {
             "subs" -> SubsPanel(a)
             "quality" -> TrackPanel(a, C.TRACK_TYPE_VIDEO, autoLabel = "Auto (best for your connection)")
             "sleep" -> SleepPanel(a, s.sleepAt)
+            "info" -> Column {
+                val rows = remember { a.streamInfo() }
+                rows.forEach { (k, v) ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 7.dp)) {
+                        Text(k, color = ArenaColors.Muted, fontSize = 14.sp, modifier = Modifier.width(96.dp))
+                        Text(v, color = Color.White, fontSize = 14.sp)
+                    }
+                }
+                if (a.canSwitchFormat()) PanelRow(if (s.format == "HLS") "Switch to TS" else "Switch to HLS",
+                    "Try the other format if this channel stutters or won't play") { a.switchFormat() }
+            }
             "cast" -> Column {
                 PanelRow(if (s.casting != null) "Stop casting to ${s.casting}" else "Chromecast / Google TV",
                     "Plays this channel on a TV with Chromecast built in") { a.castToDevice() }
