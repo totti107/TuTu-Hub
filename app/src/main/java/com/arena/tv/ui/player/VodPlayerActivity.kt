@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.LaunchedEffect
@@ -142,7 +143,7 @@ class VodPlayerActivity : ComponentActivity() {
                     androidx.media3.common.C.TRACK_TYPE_VIDEO -> ": this device doesn't support its video format."
                     androidx.media3.common.C.TRACK_TYPE_AUDIO -> ": this device doesn't support its audio format. Try another audio track (Audio button)."
                     else -> "."
-                } + (Streams.decoderDetail(e)?.let { "\n$it" } ?: "")
+                } + ((Streams.videoDetail(player) ?: Streams.decoderDetail(e))?.let { "\n$it" } ?: "")
             }
         }
         player.addListener(events)
@@ -216,12 +217,29 @@ class VodPlayerActivity : ComponentActivity() {
                         }
                     }
                     error.value?.let {
-                        Text(it, color = Color.White, modifier = Modifier.align(Alignment.Center).clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xCC111111)).padding(20.dp))
+                        Column(Modifier.align(Alignment.Center).padding(24.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xE6111214)).padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(it, color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                WhiteButton("Play in another app", { openElsewhere() })
+                                com.arena.tv.ui.components.GhostButton("Back", { finish() })
+                            }
+                            Text("VLC and similar apps have their own decoders and can play formats some TVs can't.", color = Color(0x99FFFFFF),
+                                fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+                        }
                     }
                 }
             }
         }
+    }
+
+    /** Hands the title to another video app (VLC, MX Player…). */
+    private fun openElsewhere() {
+        val uri = player.currentMediaItem?.localConfiguration?.uri ?: return
+        val i = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*").putExtra("title", title.value)
+            .putExtra("position", player.currentPosition)
+        runCatching { startActivity(Intent.createChooser(i, "Play ${title.value} with")) }
+            .onFailure { android.widget.Toast.makeText(this, "No other video app installed — VLC is free on the Play Store", android.widget.Toast.LENGTH_LONG).show() }
     }
 
     /** Same title, same spot, with the software decoders (when the TV's hardware decoder refuses). */

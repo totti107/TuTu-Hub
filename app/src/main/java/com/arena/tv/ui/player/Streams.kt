@@ -44,6 +44,26 @@ object Streams {
         return null
     }
 
+    /** "3840×2160 · HEVC 10-bit · HDR · 24 fps" for the video track (helps explain why a TV can't play a file). */
+    fun videoDetail(p: androidx.media3.common.Player): String? {
+        val f = p.currentTracks.groups.firstOrNull { it.type == androidx.media3.common.C.TRACK_TYPE_VIDEO }?.let { g ->
+            (0 until g.length).map { g.getTrackFormat(it) }.maxByOrNull { it.height }
+        } ?: return null
+        val codec = when {
+            f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION || f.codecs?.startsWith("dv") == true -> "Dolby Vision"
+            f.sampleMimeType == MimeTypes.VIDEO_H265 -> "HEVC" + if (f.codecs?.contains(".2.") == true || f.colorInfo?.colorTransfer in setOf(
+                androidx.media3.common.C.COLOR_TRANSFER_ST2084, androidx.media3.common.C.COLOR_TRANSFER_HLG)) " 10-bit" else ""
+            f.sampleMimeType == MimeTypes.VIDEO_H264 -> "H.264"
+            f.sampleMimeType == MimeTypes.VIDEO_AV1 -> "AV1"
+            else -> f.sampleMimeType?.substringAfter('/')?.uppercase()
+        }
+        val hdr = when (f.colorInfo?.colorTransfer) {
+            androidx.media3.common.C.COLOR_TRANSFER_ST2084 -> "HDR10"; androidx.media3.common.C.COLOR_TRANSFER_HLG -> "HLG"; else -> null
+        }
+        return listOfNotNull(f.width.takeIf { it > 0 }?.let { "${it}×${f.height}" }, codec, hdr,
+            f.frameRate.takeIf { it > 0 }?.let { "${kotlin.math.round(it).toInt()} fps" }).joinToString(" · ").ifEmpty { null }
+    }
+
     /** Decoders: hardware first normally; [softwareFirst] when the TV's hardware decoder refuses (slower but reliable). */
     fun renderers(context: Context, softwareFirst: Boolean = false): DefaultRenderersFactory = object : DefaultRenderersFactory(context) {
         override fun buildTextRenderers(context: Context, output: androidx.media3.exoplayer.text.TextOutput, outputLooper: android.os.Looper,

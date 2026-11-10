@@ -11,6 +11,11 @@
 | 3.14.3 | 1018 | `5e62f7e` | ❌ legacy subtitle decoding; subtitles turned off on errors |
 | 3.14.4 | 1019 | `cf13595` | ? stops previews before full screen, decoder retry, software-decoder fallback, decoder name in errors |
 | 3.14.5 | 1020 | `87c33d6` | ? **removes the 3.13.3 caption search** — streams read exactly like 3.13.2 again |
+| 3.14.6 | 1021 | (next) | movie errors show the video format (e.g. 3840×2160 · HEVC 10-bit · HDR) and offer "Play in another app" |
+
+Test notes: after unplugging the TV, 3.14.4 plays live channels fine. Some movies/episodes fail with
+`video/hevc` (hardware decoder refused, software decoder `c2.android.hevc.decoder` too weak) — a per-file format
+limit of the TV (likely 4K / 10-bit / HDR / Dolby Vision), not the 3.13.3 bug.
 
 Symptoms: "This device can't decode this stream (picture)" on every channel and "Can't play this title (decoding failed)"
 on movies/series — TV only; the phone kept working. After many failed starts the TV's hardware video decoder can stay
