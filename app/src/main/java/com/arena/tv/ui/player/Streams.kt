@@ -114,6 +114,6 @@ object Streams {
         val item = MediaItem.Builder().setUri(Uri.parse(url)).apply {
             if (forceHls || url.contains("m3u8", true)) setMimeType(MimeTypes.APPLICATION_M3U8)
         }.build()
-        return DefaultMediaSourceFactory(context, extractors()).setDataSourceFactory(ds).createMediaSource(item)
+        return DefaultMediaSourceFactory(context).setDataSourceFactory(ds).createMediaSource(item)
     }
 }

@@ -479,8 +479,8 @@ class PlayerActivity : ComponentActivity() {
         val ds = OkHttpDataSource.Factory(app.http)
             .setUserAgent(ch.userAgent?.ifBlank { null } ?: "Mozilla/5.0 (Linux; Android) TuTuTV/1.0")
         ch.referrer?.let { ds.setDefaultRequestProperties(mapOf("Referer" to it)) }
-        val captions = app.prefs.value.subtitleTranslate.isNotEmpty() && ch.id !in badCaptions
-        return DefaultMediaSourceFactory(this, Streams.extractors(captions)).setDataSourceFactory(ds)
+        // Streams are read exactly as in 3.13.2 (the forced caption search broke playback on some TVs).
+        return DefaultMediaSourceFactory(this).setDataSourceFactory(ds)
     }
 
     private fun load() {
