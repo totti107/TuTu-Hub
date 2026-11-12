@@ -112,6 +112,7 @@ fun SettingsScreen() {
     var editing by remember { mutableStateOf<Playlist?>(null) }
     var categories by remember { mutableStateOf(false) }
     var hiddenDialog by remember { mutableStateOf(false) }
+    var hiddenPin by remember { mutableStateOf(false) }
     var addTeam by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Playlist?>(null) }
     var showAllLeagues by rememberSaveable { mutableStateOf(false) }
@@ -188,10 +189,10 @@ fun SettingsScreen() {
             item {
                 Card {
                     Text("Hidden channels", fontWeight = FontWeight.SemiBold)
-                    Text("Hide a single channel by holding OK on it in Live TV (or pressing Menu). Bring it back here.", color = ArenaColors.Muted, fontSize = 13.sp)
+                    Text("Hide a single channel by holding OK on it in Live TV (or pressing Menu). The list is protected by your parental PIN.", color = ArenaColors.Muted, fontSize = 13.sp)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                         Text("${settings.hiddenChannels.size} hidden", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                        OutlinedButton(onClick = { hiddenDialog = true }, enabled = settings.hiddenChannels.isNotEmpty()) { Text("Show hidden channels") }
+                        OutlinedButton(onClick = { hiddenPin = true }, enabled = settings.hiddenChannels.isNotEmpty()) { Text("🔒 Show hidden channels") }
                     }
                 }
             }
@@ -312,6 +313,9 @@ fun SettingsScreen() {
 
     editing?.let { p -> PlaylistEditor(vm, p, onDismiss = { editing = null; vm.stopPhoneEntry() }) { vm.savePlaylist(it); editing = null; vm.stopPhoneEntry() } }
     if (categories) CategoriesDialog(vm, settings) { categories = false }
+    // The hidden channels list needs the parental PIN (the same one as adult channels; set here if there's none yet).
+    if (hiddenPin) com.arena.tv.ui.components.PinDialog("Hidden channels", creating = settings.parentalPin.isEmpty(), onDismiss = { hiddenPin = false },
+        check = { vm.checkPin(it) }) { hiddenPin = false; hiddenDialog = true }
     if (hiddenDialog) HiddenChannelsDialog(vm) { hiddenDialog = false }
     if (addTeam) TeamSearchDialog(vm) { addTeam = false }
     deleting?.let { p ->
