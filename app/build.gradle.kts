@@ -7,7 +7,7 @@ plugins {
     id("app.cash.paparazzi")
 }
 
-val appVersion = "3.17.1"
+val appVersion = "3.17.2"
 
 android {
     namespace = "com.arena.tv"

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
@@ -575,7 +576,18 @@ internal fun ChannelMenus(vm: LiveTvViewModel) {
         androidx.compose.material3.AlertDialog(onDismissRequest = { vm.menuFor.value = null }, containerColor = ArenaColors.Surface,
             title = { Text(ch.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Holding OK opens this menu while the button is still down: the remote keeps repeating OK and then
+                // releases it, which used to "click" the first row (Add to favorites). Ignore that same hold here;
+                // only a fresh press of OK chooses a row. Taps on a phone don't send key events, so they're unaffected.
+                var freshPress by remember(ch.id) { mutableStateOf(false) }
+                Column(Modifier.onPreviewKeyEvent { e ->
+                    val ok = e.key == androidx.compose.ui.input.key.Key.DirectionCenter || e.key == androidx.compose.ui.input.key.Key.Enter ||
+                        e.key == androidx.compose.ui.input.key.Key.NumPadEnter
+                    if (!ok) return@onPreviewKeyEvent false
+                    if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
+                        if (e.nativeKeyEvent.repeatCount == 0) { freshPress = true; false } else !freshPress
+                    } else !freshPress
+                }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     MenuRow(if (fav) "★  Remove from favorites" else "☆  Add to favorites") { vm.toggleFavorite(ch.id); vm.menuFor.value = null }
                     MenuRow("🚫  Hide this channel") { vm.hideChannel(ch) }
                     MenuRow("🗂  Hide category \"${ch.groupTitle}\"") { vm.hideCategory(ch) }
