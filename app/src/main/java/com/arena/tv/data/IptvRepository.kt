@@ -223,12 +223,12 @@ class IptvRepository(
     /** Re-apply which playlists / categories are shown (cheap, no download). */
     suspend fun applyVisibility() = withContext(Dispatchers.IO) {
         val s = settings.current()
-        db.channels().applyVisibility(s.activeIds, s.hiddenGroups.toList(), s.hideAdult)
+        db.channels().applyVisibility(s.activeIds, s.hiddenGroups.toList(), s.hideAdult, s.hiddenChannels.toList())
         // Adult movie / series categories (by name, like "18+ | ..."), then the same hide / lock rules as channels.
         val adultCats = db.vod().categoryNames().filter { Adult.isAdult(it.name) }.map { it.id }
         db.vod().markAdultCategories(adultCats); db.vod().markAdultTitles(adultCats)
-        db.vod().applyVisibility(s.activeIds, s.hideAdult)
-        db.vod().applyCategoryVisibility(s.activeIds, s.hideAdult)
+        db.vod().applyVisibility(s.activeIds, s.hideAdult, s.hiddenVodCats.toList())
+        db.vod().applyCategoryVisibility(s.activeIds, s.hideAdult, s.hiddenVodCats.toList())
         _state.update { it.copy(version = it.version + 1) }
     }
 

@@ -155,6 +155,32 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun select(ch: ChannelEntity) { selected.value = ch }
+    // ---------------- Hold-OK menu: favorite / hide ----------------
+    /** The channel whose menu is open. */
+    val menuFor = MutableStateFlow<ChannelEntity?>(null)
+    /** Just hidden (for the "Undo" note). */
+    val justHidden = MutableStateFlow<ChannelEntity?>(null)
+    private var undoJob: kotlinx.coroutines.Job? = null
+
+    fun hideChannel(ch: ChannelEntity) = viewModelScope.launch {
+        menuFor.value = null
+        c.settings.setHiddenChannels(c.settings.current().hiddenChannels + ch.id)
+        c.iptv.applyVisibility()
+        justHidden.value = ch
+        undoJob?.cancel(); undoJob = viewModelScope.launch { kotlinx.coroutines.delay(8000); justHidden.value = null }
+    }
+    fun undoHide() = viewModelScope.launch {
+        val ch = justHidden.value ?: return@launch
+        justHidden.value = null
+        c.settings.setHiddenChannels(c.settings.current().hiddenChannels - ch.id)
+        c.iptv.applyVisibility()
+    }
+    fun hideCategory(ch: ChannelEntity) = viewModelScope.launch {
+        menuFor.value = null
+        c.settings.setHiddenGroups(c.settings.current().hiddenGroups + "${ch.playlistId}|${ch.groupTitle}")
+        c.iptv.applyVisibility()
+    }
+
     /** Ask the channel list to put the remote's focus on the selected channel. */
     val focusSelected = MutableStateFlow(false)
     private fun goTo(ch: ChannelEntity) {

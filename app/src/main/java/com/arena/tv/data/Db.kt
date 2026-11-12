@@ -123,8 +123,8 @@ interface ChannelDao {
     @Query("SELECT id, epgKey FROM channels WHERE playlistId = :pid AND epgKey IS NOT NULL") suspend fun epgKeysOf(pid: String): List<ChannelEpgKey>
     @Query("UPDATE channels SET epgKey = NULL WHERE playlistId = :pid") suspend fun clearEpgKeys(pid: String)
     @Query("""UPDATE channels SET visible = CASE WHEN playlistId IN (:active) AND (playlistId || '|' || groupTitle) NOT IN (:hidden)
-              AND NOT (adult = 1 AND :hideAdult) THEN 1 ELSE 0 END""")
-    suspend fun applyVisibility(active: List<String>, hidden: List<String>, hideAdult: Boolean)
+              AND id NOT IN (:hiddenChannels) AND NOT (adult = 1 AND :hideAdult) THEN 1 ELSE 0 END""")
+    suspend fun applyVisibility(active: List<String>, hidden: List<String>, hideAdult: Boolean, hiddenChannels: List<String>)
     @Transaction suspend fun replacePlaylist(pid: String, items: List<ChannelEntity>) { clearPlaylist(pid); items.chunked(500).forEach { insertAll(it) } }
     @Transaction suspend fun setEpgKeys(pid: String, map: Map<String, String>) { clearEpgKeys(pid); map.forEach { (id, k) -> setEpgKey(id, k) } }
     /** Adds guide links without clearing the ones set by an earlier step. */

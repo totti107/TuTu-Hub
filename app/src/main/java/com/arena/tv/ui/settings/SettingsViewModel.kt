@@ -18,6 +18,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -145,6 +146,25 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         c.settings.setHiddenGroups(if (hidden) cur + key else cur - key)
         c.iptv.applyVisibility()
     }
+    // ---------------- Hidden channels / movie & series categories ----------------
+    val hiddenChannels: StateFlow<List<com.arena.tv.data.ChannelEntity>> = c.settings.flow.map { it.hiddenChannels }.distinctUntilChanged()
+        .map { ids -> if (ids.isEmpty()) emptyList() else c.db.channels().byIds(ids.toList()).sortedBy { it.name.lowercase() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun unhideChannel(id: String) = viewModelScope.launch {
+        c.settings.setHiddenChannels(c.settings.current().hiddenChannels - id); c.iptv.applyVisibility()
+    }
+    fun unhideAllChannels() = viewModelScope.launch { c.settings.setHiddenChannels(emptySet()); c.iptv.applyVisibility() }
+
+    val vodCategories: StateFlow<List<com.arena.tv.data.VodCatRow>> = c.settings.flow.map { it.playlists.filter { p -> p.enabled }.map { p -> p.id } }
+        .distinctUntilChanged()
+        .flatMapLatest { ids -> if (ids.isEmpty()) flowOf(emptyList()) else c.db.vod().allCategories(ids) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun setVodCatsHidden(keys: Collection<String>, hidden: Boolean) = viewModelScope.launch {
+        val cur = c.settings.current().hiddenVodCats
+        c.settings.setHiddenVodCats(if (hidden) cur + keys else cur - keys.toSet())
+        c.iptv.applyVisibility()
+    }
+
     fun setAllHidden(keys: List<String>, hidden: Boolean) = viewModelScope.launch {
         val cur = c.settings.current().hiddenGroups
         c.settings.setHiddenGroups(if (hidden) cur + keys else cur - keys.toSet())

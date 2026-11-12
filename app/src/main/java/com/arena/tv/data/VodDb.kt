@@ -77,6 +77,7 @@ data class VodFavoriteEntity(@PrimaryKey val key: String, val addedAt: Long)
 
 data class CategoryCount(val key: String, val id: String, val name: String, val count: Int, val adult: Boolean = false)
 data class CategoryName(val id: String, val name: String)
+data class VodCatRow(val key: String, val id: String, val name: String, val kind: Int, val playlistId: String, val count: Int)
 
 @Dao
 interface VodDao {
@@ -86,8 +87,15 @@ interface VodDao {
     @Query("DELETE FROM vod_categories WHERE kind = :kind AND playlistId = :pid") fun clearCategoriesBlocking(pid: String, kind: Int)
     @Query("DELETE FROM vod WHERE playlistId NOT IN (:keep)") suspend fun clearOthers(keep: List<String>)
     @Query("DELETE FROM vod_categories WHERE playlistId NOT IN (:keep)") suspend fun clearOtherCategories(keep: List<String>)
-    @Query("UPDATE vod SET visible = (playlistId IN (:active)) AND NOT (:hideAdult AND adult = 1)") suspend fun applyVisibility(active: List<String>, hideAdult: Boolean)
-    @Query("UPDATE vod_categories SET visible = (playlistId IN (:active)) AND NOT (:hideAdult AND adult = 1)") suspend fun applyCategoryVisibility(active: List<String>, hideAdult: Boolean)
+    @Query("UPDATE vod SET visible = (playlistId IN (:active)) AND NOT (:hideAdult AND adult = 1) AND (kind || '|' || categoryId) NOT IN (:hiddenCats)")
+    suspend fun applyVisibility(active: List<String>, hideAdult: Boolean, hiddenCats: List<String>)
+    @Query("UPDATE vod_categories SET visible = (playlistId IN (:active)) AND NOT (:hideAdult AND adult = 1) AND (kind || '|' || id) NOT IN (:hiddenCats)")
+    suspend fun applyCategoryVisibility(active: List<String>, hideAdult: Boolean, hiddenCats: List<String>)
+    /** Every movie / series category of the given playlists, shown or hidden (for Settings → Choose categories). */
+    @Query("""SELECT c.`key`, c.id, c.name, c.kind, c.playlistId, COUNT(v.`key`) AS count FROM vod_categories c
+              LEFT JOIN vod v ON v.kind = c.kind AND v.categoryId = c.id
+              WHERE c.playlistId IN (:pids) GROUP BY c.`key` ORDER BY c.kind, c.position""")
+    fun allCategories(pids: List<String>): Flow<List<VodCatRow>>
     @Query("SELECT id, name FROM vod_categories") suspend fun categoryNames(): List<CategoryName>
     @Query("UPDATE vod_categories SET adult = (id IN (:ids))") suspend fun markAdultCategories(ids: List<String>)
     @Query("UPDATE vod SET adult = (categoryId IN (:ids))") suspend fun markAdultTitles(ids: List<String>)

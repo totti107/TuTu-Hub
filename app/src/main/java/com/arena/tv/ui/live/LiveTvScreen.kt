@@ -3,6 +3,11 @@ package com.arena.tv.ui.live
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -90,6 +95,15 @@ fun timeLeft(stop: Long, now: Long = System.currentTimeMillis()): String {
 
 @Composable
 fun LiveTvScreen(onOpenSettings: () -> Unit) {
+    val vm = appViewModel { LiveTvViewModel(it) }
+    Box(Modifier.fillMaxSize()) {
+        LiveTvContent(onOpenSettings)
+        ChannelMenus(vm)
+    }
+}
+
+@Composable
+private fun LiveTvContent(onOpenSettings: () -> Unit) {
     val vm = appViewModel { LiveTvViewModel(it) }
     val tab by vm.tab.collectAsStateWithLifecycle()
     val groups by vm.groups.collectAsStateWithLifecycle()
@@ -273,21 +287,25 @@ private fun ChannelList(vm: LiveTvViewModel, modifier: Modifier, wide: Boolean =
             Box(if (selected?.id == ch.id) Modifier.focusRequester(selectedFocus) else Modifier) {
                 ChannelCard(i + 1, ch, guide[ch.id], wide && selected?.id == ch.id, ch.id in favs,
                     onClick = { if (wide && selected?.id != ch.id) vm.select(ch) else play(ch) },
-                    onFav = { vm.toggleFavorite(ch.id) })
+                    onFav = { vm.toggleFavorite(ch.id) }, onMenu = { vm.menuFor.value = ch })
             }
         }
     }
 }
 
 @Composable
-internal fun ChannelCard(number: Int, ch: ChannelEntity, nn: NowNext?, selected: Boolean, fav: Boolean, onClick: () -> Unit, onFav: () -> Unit) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+internal fun ChannelCard(number: Int, ch: ChannelEntity, nn: NowNext?, selected: Boolean, fav: Boolean, onClick: () -> Unit, onFav: () -> Unit,
+                         onMenu: (() -> Unit)? = null) {
     // Compact, like the reference: small round logo, one bold line for the name, the current show underneath when the guide has it.
     val now = nn?.now
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
             .background(if (selected) ArenaColors.SurfaceHi else ArenaColors.Surface)
             .then(if (selected) Modifier.border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(16.dp)) else Modifier)
-            .clickable(onClick = onClick).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            // Hold OK (or the remote's Menu key) for Favorite / Hide.
+            .onKeyEvent { e -> if (onMenu != null && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.Menu) { onMenu(); true } else false }
+            .combinedClickable(onClick = onClick, onLongClick = onMenu).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("%02d".format(number), color = ArenaColors.Muted, fontSize = 13.sp, modifier = Modifier.width(24.dp))
@@ -544,4 +562,43 @@ internal fun ScheduleList(channelId: String?, schedule: List<ProgramEntity>, now
                 }
             }
         }
+}
+
+/** Hold-OK menu on a channel, and the "Channel hidden · Undo" note. Shown by every Live TV layout. */
+@Composable
+internal fun ChannelMenus(vm: LiveTvViewModel) {
+    val menu by vm.menuFor.collectAsStateWithLifecycle()
+    val favs by vm.favoriteIds.collectAsStateWithLifecycle()
+    val hidden by vm.justHidden.collectAsStateWithLifecycle()
+    menu?.let { ch ->
+        val fav = ch.id in favs
+        androidx.compose.material3.AlertDialog(onDismissRequest = { vm.menuFor.value = null }, containerColor = ArenaColors.Surface,
+            title = { Text(ch.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MenuRow(if (fav) "★  Remove from favorites" else "☆  Add to favorites") { vm.toggleFavorite(ch.id); vm.menuFor.value = null }
+                    MenuRow("🚫  Hide this channel") { vm.hideChannel(ch) }
+                    MenuRow("🗂  Hide category \"${ch.groupTitle}\"") { vm.hideCategory(ch) }
+                    Text("Hidden things come back in Settings → Playlists (Hidden channels · Choose categories).",
+                        color = ArenaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                }
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { vm.menuFor.value = null }, modifier = Modifier.focusOutline()) { Text("Cancel") } })
+    }
+    hidden?.let { ch ->
+        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.BottomCenter) {
+            Row(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xF0202125)).padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("${ch.name} hidden", fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 320.dp))
+                Spacer(Modifier.width(10.dp))
+                androidx.compose.material3.Button(onClick = { vm.undoHide() }, modifier = Modifier.focusOutline()) { Text("Undo") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuRow(label: String, onClick: () -> Unit) {
+    Text(label, fontSize = 17.sp, modifier = Modifier.fillMaxWidth().focusOutline(RoundedCornerShape(10.dp)).clip(RoundedCornerShape(10.dp))
+        .background(ArenaColors.SurfaceHi).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp))
 }

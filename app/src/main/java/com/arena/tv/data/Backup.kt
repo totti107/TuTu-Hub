@@ -19,6 +19,8 @@ data class Backup(
     val playlists: List<Playlist> = emptyList(),
     val activePlaylist: String = "",
     val hiddenGroups: List<String> = emptyList(),
+    val hiddenChannels: List<String> = emptyList(),
+    val hiddenVodCats: List<String> = emptyList(),
     val regions: List<String> = emptyList(),
     val enabledLeagues: List<String> = emptyList(),
     val followedSports: List<String> = emptyList(),
@@ -43,6 +45,8 @@ class BackupManager(private val settings: SettingsStore, private val db: ArenaDb
             playlists = s.playlists.map { it.copy(error = null) },
             activePlaylist = s.activePlaylist,
             hiddenGroups = s.hiddenGroups.sorted(),
+            hiddenChannels = s.hiddenChannels.sorted(),
+            hiddenVodCats = s.hiddenVodCats.sorted(),
             regions = s.regions.map { it.name },
             enabledLeagues = s.enabledLeagues.sorted(),
             followedSports = s.followedSports.sorted(),
@@ -69,6 +73,8 @@ class BackupManager(private val settings: SettingsStore, private val db: ArenaDb
         settings.updatePlaylists { b.playlists.map { it.copy(lastRefresh = 0, lastEpg = 0, error = null) } }
         settings.setActivePlaylist(b.activePlaylist)
         settings.setHiddenGroups(b.hiddenGroups.toSet())
+        settings.setHiddenChannels(b.hiddenChannels.toSet())
+        settings.setHiddenVodCats(b.hiddenVodCats.toSet())
         settings.setRegions(b.regions.mapNotNull { r -> runCatching { Region.valueOf(r) }.getOrNull() }.toSet())
         if (b.enabledLeagues.isNotEmpty()) settings.setLeagues(b.enabledLeagues.toSet())
         settings.setFollowedSports(b.followedSports.toSet())

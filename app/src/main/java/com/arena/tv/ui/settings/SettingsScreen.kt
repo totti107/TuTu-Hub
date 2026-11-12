@@ -111,6 +111,7 @@ fun SettingsScreen() {
     val settings = s ?: return
     var editing by remember { mutableStateOf<Playlist?>(null) }
     var categories by remember { mutableStateOf(false) }
+    var hiddenDialog by remember { mutableStateOf(false) }
     var addTeam by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Playlist?>(null) }
     var showAllLeagues by rememberSaveable { mutableStateOf(false) }
@@ -183,6 +184,18 @@ fun SettingsScreen() {
                 }
             }
 
+            // ---------------- Hidden channels ----------------
+            item {
+                Card {
+                    Text("Hidden channels", fontWeight = FontWeight.SemiBold)
+                    Text("Hide a single channel by holding OK on it in Live TV (or pressing Menu). Bring it back here.", color = ArenaColors.Muted, fontSize = 13.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                        Text("${settings.hiddenChannels.size} hidden", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                        OutlinedButton(onClick = { hiddenDialog = true }, enabled = settings.hiddenChannels.isNotEmpty()) { Text("Show hidden channels") }
+                    }
+                }
+            }
+
             // ---------------- Movies & series (own schedule) ----------------
             item { SectionHeader("Movies & Series") }
             item { LibraryCard(vm, settings) }
@@ -191,9 +204,9 @@ fun SettingsScreen() {
             item { SectionHeader("Channel categories") }
             item {
                 Card {
-                    Text("Turn off categories you never watch. They disappear from Live TV and from channel matching.", color = ArenaColors.Muted, fontSize = 13.sp)
+                    Text("Turn off categories you never watch — Live TV, movies and series. They disappear from the app (and from channel matching).", color = ArenaColors.Muted, fontSize = 13.sp)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                        Text("${settings.hiddenGroups.size} hidden", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                        Text("${settings.hiddenGroups.size + settings.hiddenVodCats.size} hidden", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                         OutlinedButton(onClick = { categories = true }, enabled = settings.playlists.isNotEmpty()) { Text("Choose categories") }
                     }
                 }
@@ -299,6 +312,7 @@ fun SettingsScreen() {
 
     editing?.let { p -> PlaylistEditor(vm, p, onDismiss = { editing = null; vm.stopPhoneEntry() }) { vm.savePlaylist(it); editing = null; vm.stopPhoneEntry() } }
     if (categories) CategoriesDialog(vm, settings) { categories = false }
+    if (hiddenDialog) HiddenChannelsDialog(vm) { hiddenDialog = false }
     if (addTeam) TeamSearchDialog(vm) { addTeam = false }
     deleting?.let { p ->
         AlertDialog(onDismissRequest = { deleting = null }, containerColor = ArenaColors.Surface,
@@ -525,33 +539,71 @@ private fun parseXtreamLink(url: String): Triple<String, String, String>? {
 @Composable
 private fun CategoriesDialog(vm: SettingsViewModel, settings: AppSettings, onDismiss: () -> Unit) {
     val groups by vm.allGroups.collectAsStateWithLifecycle()
+    val vodCats by vm.vodCategories.collectAsStateWithLifecycle()
     var q by remember { mutableStateOf("") }
+    var tab by remember { mutableStateOf(0) } // 0 Live TV, 1 Movies, 2 Series
     val multi = settings.playlists.count { it.enabled } > 1
-    val shown = groups.filter { q.isBlank() || it.groupTitle.contains(q, true) }
-    val keys = shown.map { "${it.playlistId}|${it.groupTitle}" }
+    data class Row3(val key: String, val name: String, val count: Int, val pid: String, val on: Boolean, val noun: String)
+    val rows = if (tab == 0) groups.filter { q.isBlank() || it.groupTitle.contains(q, true) }.map {
+        val k = "${it.playlistId}|${it.groupTitle}"; Row3(k, it.groupTitle, it.count, it.playlistId, k !in settings.hiddenGroups, "channels")
+    } else vodCats.filter { it.kind == tab - 1 && (q.isBlank() || it.name.contains(q, true)) }.map {
+        val k = "${it.kind}|${it.id}"; Row3(k, it.name, it.count, it.playlistId, k !in settings.hiddenVodCats, if (tab == 1) "movies" else "series")
+    }
+    fun set(keys: List<String>, hidden: Boolean) = if (tab == 0) vm.setAllHidden(keys, hidden) else vm.setVodCatsHidden(keys, hidden)
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(0.94f).fillMaxSize(0.9f).clip(RoundedCornerShape(22.dp)).background(ArenaColors.Surface).padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Channel categories", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("Choose categories", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                listOf("Live TV", "Movies", "Series").forEachIndexed { i, label ->
+                    FilterChip(modifier = Modifier.focusOutline(), selected = tab == i, onClick = { tab = i }, label = { Text(label) })
+                }
             }
             com.arena.tv.ui.components.TvTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search categories") }, singleLine = true,
                 leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 6.dp)) {
-                OutlinedButton(onClick = { vm.setAllHidden(keys, false) }) { Text("Show all") }
-                OutlinedButton(onClick = { vm.setAllHidden(keys, true) }) { Text("Hide all") }
+                OutlinedButton(onClick = { set(rows.map { it.key }, false) }) { Text("Show all") }
+                OutlinedButton(onClick = { set(rows.map { it.key }, true) }) { Text("Hide all") }
             }
-            if (groups.isEmpty()) Text("Load a playlist first.", color = ArenaColors.Muted)
+            if (rows.isEmpty()) Text(if (tab == 0) "Load a playlist first." else "No ${if (tab == 1) "movie" else "series"} categories loaded yet.", color = ArenaColors.Muted)
             LazyColumn(Modifier.fillMaxWidth()) {
-                items(shown, key = { it.playlistId + "|" + it.groupTitle }) { g ->
-                    val key = "${g.playlistId}|${g.groupTitle}"
-                    val on = key !in settings.hiddenGroups
-                    Row(Modifier.fillMaxWidth().clickable { vm.setGroupHidden(key, on) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                items(rows, key = { it.key }) { r ->
+                    Row(Modifier.fillMaxWidth().clickable { set(listOf(r.key), r.on) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(g.groupTitle, color = if (on) ArenaColors.Text else ArenaColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${g.count} channels" + if (multi) " · ${settings.playlist(g.playlistId)?.name ?: ""}" else "", color = ArenaColors.Muted, fontSize = 12.sp)
+                            Text(r.name, color = if (r.on) ArenaColors.Text else ArenaColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${r.count} ${r.noun}" + if (multi) " · ${settings.playlist(r.pid)?.name ?: ""}" else "", color = ArenaColors.Muted, fontSize = 12.sp)
                         }
-                        Switch(on, { vm.setGroupHidden(key, !it) })
+                        Switch(r.on, { set(listOf(r.key), !it) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Channels hidden with the hold-OK menu, each with Unhide. */
+@Composable
+private fun HiddenChannelsDialog(vm: SettingsViewModel, onDismiss: () -> Unit) {
+    val list by vm.hiddenChannels.collectAsStateWithLifecycle()
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(0.94f).fillMaxSize(0.85f).clip(RoundedCornerShape(22.dp)).background(ArenaColors.Surface).padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Hidden channels", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close") }
+            }
+            if (list.isNotEmpty()) OutlinedButton(onClick = { vm.unhideAllChannels() }, modifier = Modifier.padding(vertical = 6.dp)) { Text("Unhide all") }
+            else Text("Nothing hidden.", color = ArenaColors.Muted)
+            LazyColumn(Modifier.fillMaxWidth()) {
+                items(list, key = { it.id }) { ch ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Logo(ch.logo, ch.name, 32.dp); Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(ch.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(ch.groupTitle, color = ArenaColors.Muted, fontSize = 12.sp, maxLines = 1)
+                        }
+                        TextButton(onClick = { vm.unhideChannel(ch.id) }, modifier = Modifier.focusOutline()) { Text("Unhide") }
                     }
                 }
             }

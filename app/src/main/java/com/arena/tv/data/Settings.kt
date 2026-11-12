@@ -159,6 +159,10 @@ data class AppSettings(
     val activePlaylist: String = "",
     /** "playlistId|group" of channel categories the user turned off. */
     val hiddenGroups: Set<String> = emptySet(),
+    /** Single channels the user hid (channel ids). */
+    val hiddenChannels: Set<String> = emptySet(),
+    /** Movie / series categories the user hid ("kind|categoryId"). */
+    val hiddenVodCats: Set<String> = emptySet(),
     val regions: Set<Region> = emptySet(),
     val enabledLeagues: Set<String> = Leagues.defaultEnabledKeys,
     /** Sports shown in the Sports section (espn names). Empty = all. */
@@ -218,6 +222,8 @@ class SettingsStore(private val context: Context) {
         val pin = stringPreferencesKey("parental_pin")
         val hideAdult = stringPreferencesKey("hide_adult")
         val prefs = stringPreferencesKey("prefs")
+        val hiddenChannels = stringSetPreferencesKey("hidden_channels")
+        val hiddenVodCats = stringSetPreferencesKey("hidden_vod_cats")
         val leaguesV2 = stringPreferencesKey("leagues_v2")
         val sportsV2 = stringPreferencesKey("sports_v2")
     }
@@ -245,6 +251,8 @@ class SettingsStore(private val context: Context) {
             playlists = lists,
             activePlaylist = p[K.active] ?: "",
             hiddenGroups = p[K.hidden] ?: emptySet(),
+            hiddenChannels = p[K.hiddenChannels] ?: emptySet(),
+            hiddenVodCats = p[K.hiddenVodCats] ?: emptySet(),
             regions = p[K.regions]?.mapNotNull { runCatching { Region.valueOf(it) }.getOrNull() }?.toSet() ?: emptySet(),
             // Leagues added in 3.11 (cricket, WWE, AEW) start switched on, also for people who already picked leagues.
             enabledLeagues = p[K.leagues]?.let { if (p[K.leaguesV2] == null) it + setOf("cricket/all", "wrestling/wwe", "wrestling/aew") else it }
@@ -283,6 +291,8 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setActivePlaylist(id: String) = context.dataStore.edit { it[K.active] = id }
     suspend fun setHiddenGroups(h: Set<String>) = context.dataStore.edit { it[K.hidden] = h }
+    suspend fun setHiddenChannels(h: Set<String>) = context.dataStore.edit { it[K.hiddenChannels] = h }
+    suspend fun setHiddenVodCats(h: Set<String>) = context.dataStore.edit { it[K.hiddenVodCats] = h }
     suspend fun setPin(pin: String) = context.dataStore.edit { it[K.pin] = pin }
     suspend fun setHideAdult(hide: Boolean) = context.dataStore.edit { it[K.hideAdult] = if (hide) "1" else "0" }
     suspend fun setDecimalOdds(decimal: Boolean) = context.dataStore.edit { it[K.oddsAmerican] = if (decimal) "decimal" else "american" }
