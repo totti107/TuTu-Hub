@@ -63,3 +63,5 @@ first) for channels with no sound (likely MP2/AC-3 audio); Live TV reopens on th
 If sound gets worse (e.g. soundbar Dolby), revert the extension mode / dependency. Previous: 3.15.1 (build 1025).
 
 3.17.0: hold-OK menu on channels (favorite / hide channel / hide category) with Undo; Settings → Playlists → Hidden channels (Unhide / Unhide all); Choose categories has Live TV / Movies / Series tabs. Previous: 3.16.0 (build 1026).
+
+- 3.17.1 = build 1028 (hidden channels list in Settings needs the parental PIN).
