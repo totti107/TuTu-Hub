@@ -52,6 +52,9 @@ object Leagues {
         League(SOCCER, "fifa.world", "FIFA World Cup", "WC", listOf("world cup", "fifa world cup", "كاس العالم"),
             mapOf(US to listOf("Fox", "FS1", "Telemundo"), UK to listOf("BBC", "ITV"), MENA to listOf("beIN Sports"))),
         League(SOCCER, "fifa.worldq.uefa", "WC Qualifying (Europe)", "WCQ", listOf("world cup qualifier", "world cup qualifiers"), defaultOn = false),
+        League(SOCCER, "fifa.friendly", "International Friendly", "FRI", listOf("international friendly", "friendly", "friendlies", "مباراة ودية", "ودية", "amical", "amistoso")),
+        League(SOCCER, "fifa.friendly.w", "Women's International Friendly", "FRI-W", listOf("women's friendly"), defaultOn = false, isWomen = true),
+        League(SOCCER, "club.friendly", "Club Friendly", "Club FRI", listOf("club friendly", "pre-season friendly", "preseason friendly"), defaultOn = false),
 
         League(BASKETBALL, "nba", "NBA", "NBA", listOf("nba", "nba basketball"),
             mapOf(US to listOf("ESPN", "ABC", "NBC", "Peacock", "Amazon Prime", "NBA TV"), CA to listOf("TSN", "Sportsnet"), UK to listOf("Sky Sports"),
@@ -123,7 +126,7 @@ object Leagues {
     fun country(l: League): String = when (l.espnId.substringBefore('.')) {
         "eng" -> "England"; "esp" -> "Spain"; "ita" -> "Italy"; "ger" -> "Germany"; "fra" -> "France"
         "uefa" -> "Europe"; "ksa" -> "Saudi Arabia"; "usa" -> "USA"; "mex" -> "Mexico"; "ned" -> "Netherlands"
-        "por" -> "Portugal"; "tur" -> "Turkey"; "sco" -> "Scotland"; "conmebol" -> "South America"; "fifa" -> "International"
+        "por" -> "Portugal"; "tur" -> "Turkey"; "sco" -> "Scotland"; "conmebol" -> "South America"; "fifa", "club" -> "International"
         else -> when (l.sport) {
             Sport.SOCCER -> "Other"
             Sport.RUGBY -> if (l.espnId == "267979") "England" else "International"
