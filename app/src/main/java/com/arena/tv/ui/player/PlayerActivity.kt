@@ -545,7 +545,8 @@ class PlayerActivity : ComponentActivity() {
             triedAlt = false
             decoderRetried = false
             val adopt = Streams.isPlaying(id)
-            Streams.lastWatched = id
+            // Adult channels are never remembered: not in Recent, and Live TV never reopens on them.
+            Streams.lastWatched = if (ch.adult) null else id
             if (captionsOffByUs && id !in badCaptions) {
                 captionsOffByUs = false
                 player?.let { p -> p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build() }
@@ -555,7 +556,10 @@ class PlayerActivity : ComponentActivity() {
             else play(ch, forceHls = false)
             val fav = id in app.db.user().favoriteIds().first()
             ui.value = ui.value.copy(channel = ch, index = index, total = ids.size, favorite = fav, error = null, now = null, next = null, videoInfo = null)
-            app.db.user().touchRecent(RecentChannelEntity(id, System.currentTimeMillis()))
+            if (!ch.adult) {
+                app.db.user().touchRecent(RecentChannelEntity(id, System.currentTimeMillis()))
+                app.parental.lock() // back on a normal channel: adult channels ask for the PIN again
+            }
             startGuide(ch)
         }
     }
@@ -783,7 +787,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         // Hand the shared player back (not released): the Live TV preview continues with this channel.
-        ui.value.channel?.id?.let { Streams.nowPlaying.value = it }
+        ui.value.channel?.takeIf { !it.adult }?.id?.let { Streams.nowPlaying.value = it }
         detachPlayer()
         player = null
         Streams.fullscreen = false

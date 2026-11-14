@@ -59,6 +59,8 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val settings = c.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    private var wasAdult = false
+
     init {
         // Back from full screen, or coming back to Live TV later (e.g. from Home): open the channel you were
         // watching — its category, selected and previewed, with the remote on it.
@@ -83,8 +85,13 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
             }
         }
         viewModelScope.launch {
-            combine(groups, favoriteIds, tab) { g, f, t -> Triple(g, f, t) }.collect { (g, f, t) ->
+            combine(groups, favoriteIds, tab, section, c.parental.unlocked) { g, f, t, _, _ -> Triple(g, f, t) }.collect { (g, f, t) ->
                 val cur = section.value
+                val adultNow = cur is Section.Group && g.any { it.adult && it.groupTitle == cur.name && it.playlistId == cur.playlistId }
+                // Leaving the adult categories locks them again: coming back asks for the PIN.
+                if (!adultNow && wasAdult) c.parental.lock()
+                wasAdult = adultNow
+                if (adultNow && !c.parental.isUnlocked()) { wasAdult = false; section.value = null; return@collect }
                 val sporty = g.filter { isSportyGroup(it.groupTitle) }
                 val valid = when (cur) {
                     null -> false
@@ -184,6 +191,7 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
     /** Ask the channel list to put the remote's focus on the selected channel. */
     val focusSelected = MutableStateFlow(false)
     private fun goTo(ch: ChannelEntity) {
+        if (ch.adult) return
         if (tab.value == 2) tab.value = 0
         val sec = section.value
         // Keep All / Favorites / Recent if the channel is in there; otherwise open its own category.

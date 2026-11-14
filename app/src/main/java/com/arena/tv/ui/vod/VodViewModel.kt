@@ -60,6 +60,7 @@ class VodViewModel(private val c: AppContainer, val kind: Int) : ViewModel() {
     /** Adult categories need the PIN (shared with adult channels). */
     val unlocked = c.parental.unlocked
     fun isUnlocked() = c.parental.isUnlocked()
+    fun lockAdult() = c.parental.lock()
     suspend fun checkPin(pin: String) = c.parental.tryUnlock(pin)
     val settings = c.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -74,7 +75,18 @@ class VodViewModel(private val c: AppContainer, val kind: Int) : ViewModel() {
     private var loadJob: Job? = null
     private val pageSize = 240
 
+    private var wasAdult = false
+
     init {
+        // Leaving an adult category locks adult titles again; a locked adult category falls back to "All".
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(category, categories, c.parental.unlocked) { id, cats, _ -> id to cats }.collect { (id, cats) ->
+                val adult = cats.any { it.adult && it.id == id }
+                if (!adult && wasAdult) c.parental.lock()
+                wasAdult = adult
+                if (adult && !c.parental.isUnlocked()) { wasAdult = false; category.value = CAT_ALL }
+            }
+        }
         viewModelScope.launch {
             combine(category, sort, year, query.debounce(250), total) { a, b, y, q, _ -> listOf(a, b, y, q) }
                 .distinctUntilChanged().collect { reload() }

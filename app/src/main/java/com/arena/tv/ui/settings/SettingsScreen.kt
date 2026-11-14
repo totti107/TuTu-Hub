@@ -315,7 +315,7 @@ fun SettingsScreen() {
     if (categories) CategoriesDialog(vm, settings) { categories = false }
     // The hidden channels list needs the parental PIN (the same one as adult channels; set here if there's none yet).
     if (hiddenPin) com.arena.tv.ui.components.PinDialog("Hidden channels", creating = settings.parentalPin.isEmpty(), onDismiss = { hiddenPin = false },
-        check = { vm.checkPin(it) }) { hiddenPin = false; hiddenDialog = true }
+        check = { vm.verifyPin(it) }) { hiddenPin = false; hiddenDialog = true }
     if (hiddenDialog) HiddenChannelsDialog(vm) { hiddenDialog = false }
     if (addTeam) TeamSearchDialog(vm) { addTeam = false }
     deleting?.let { p ->

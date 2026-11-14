@@ -100,6 +100,8 @@ fun formatDuration(secs: Int?): String? = secs?.takeIf { it > 0 }?.let { s ->
 @Composable
 fun VodHomeScreen(kind: Int, onOpen: (String) -> Unit, onOpenSettings: () -> Unit) {
     val vm = appViewModel(key = "vod-$kind") { VodViewModel(it, kind) }
+    // Leaving Movies / Series locks adult titles again.
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { vm.lockAdult() } }
     val tab by vm.tab.collectAsStateWithLifecycle()
     val total by vm.total.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()

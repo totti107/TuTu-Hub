@@ -97,6 +97,8 @@ fun timeLeft(stop: Long, now: Long = System.currentTimeMillis()): String {
 @Composable
 fun LiveTvScreen(onOpenSettings: () -> Unit) {
     val vm = appViewModel { LiveTvViewModel(it) }
+    // Leaving Live TV (Home, Movies…) locks adult channels again.
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { vm.parental.lock() } }
     Box(Modifier.fillMaxSize()) {
         LiveTvContent(onOpenSettings)
         ChannelMenus(vm)

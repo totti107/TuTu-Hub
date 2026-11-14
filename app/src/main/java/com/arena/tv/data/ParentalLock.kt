@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Adult channels stay locked until the PIN is entered; they lock again after 30 minutes or when the app restarts. */
+/** Adult channels stay locked until the PIN is entered; they lock again when you leave them, after 30 minutes, or when the app restarts. */
 class ParentalLock(private val settings: SettingsStore) {
     private val _unlocked = MutableStateFlow(false)
     val unlocked: StateFlow<Boolean> = _unlocked.asStateFlow()
@@ -24,5 +24,12 @@ class ParentalLock(private val settings: SettingsStore) {
         return true
     }
 
-    fun lock() { _unlocked.value = false }
+    fun lock() { if (_unlocked.value) _unlocked.value = false }
+
+    /** Checks the PIN without unlocking adult channels (e.g. the hidden channels list in Settings). */
+    suspend fun verify(pin: String): Boolean {
+        val saved = settings.current().parentalPin
+        if (saved.isEmpty()) { settings.setPin(pin); return true }
+        return saved == pin
+    }
 }

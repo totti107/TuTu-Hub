@@ -97,12 +97,12 @@ interface ChannelDao {
     fun favorites(): Flow<List<ChannelEntity>>
     @Query("SELECT c.* FROM channels c JOIN favorite_channels f ON f.channelId = c.id WHERE c.visible = 1 ORDER BY f.addedAt")
     suspend fun favoritesOnce(): List<ChannelEntity>
-    @Query("SELECT c.* FROM channels c JOIN recent_channels r ON r.channelId = c.id WHERE c.visible = 1 ORDER BY r.at DESC LIMIT 30")
+    @Query("SELECT c.* FROM channels c JOIN recent_channels r ON r.channelId = c.id WHERE c.visible = 1 AND c.adult = 0 ORDER BY r.at DESC LIMIT 30")
     fun recents(): Flow<List<ChannelEntity>>
     @Query("SELECT * FROM channels WHERE visible = 1 ORDER BY position LIMIT 30000") fun all(): Flow<List<ChannelEntity>>
     @Query("SELECT * FROM channels WHERE visible = 1 AND adult = 0 AND logo IS NOT NULL AND logo != '' ORDER BY position LIMIT :n")
     suspend fun withLogos(n: Int): List<ChannelEntity>
-    @Query("SELECT COUNT(*) FROM recent_channels r JOIN channels c ON c.id = r.channelId WHERE c.visible = 1") fun recentCount(): Flow<Int>
+    @Query("SELECT COUNT(*) FROM recent_channels r JOIN channels c ON c.id = r.channelId WHERE c.visible = 1 AND c.adult = 0") fun recentCount(): Flow<Int>
     @Query("SELECT COUNT(*) FROM favorite_channels f JOIN channels c ON c.id = f.channelId WHERE c.visible = 1") fun favoriteCount(): Flow<Int>
     @Query("SELECT * FROM channels WHERE id = :id") suspend fun byId(id: String): ChannelEntity?
     @Query("SELECT COUNT(*) FROM channels WHERE visible = 1 AND adult = 0 AND epgKey IS NOT NULL") fun withGuideCount(): Flow<Int>

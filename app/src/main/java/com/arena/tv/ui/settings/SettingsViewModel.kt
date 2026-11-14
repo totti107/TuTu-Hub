@@ -180,6 +180,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun setHideAdult(h: Boolean) = viewModelScope.launch { c.settings.setHideAdult(h); c.iptv.applyVisibility() }
     fun lockNow() = c.parental.lock()
     suspend fun checkPin(pin: String) = c.parental.tryUnlock(pin)
+    suspend fun verifyPin(pin: String) = c.parental.verify(pin)
     fun resetPin(newPin: String) = viewModelScope.launch { c.settings.setPin(newPin) }
     fun setDecimalOdds(d: Boolean) = viewModelScope.launch { c.settings.setDecimalOdds(d) }
     fun toggleRegion(r: Region) = viewModelScope.launch {
