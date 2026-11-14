@@ -96,7 +96,7 @@ object M3uParser {
                         tvgName = attrs["tvg-name"]?.takeIf { it.isNotBlank() },
                         userAgent = lineUa ?: attrs["user-agent"],
                         referrer = lineRef,
-                    ).let { it.copy(adult = Adult.isAdult(it.group) || attrs["parent-code"] != null) }
+                    ).let { it.copy(adult = Adult.isAdult(it.group) || (attrs["parent-code"] != null && Adult.isAdult(it.name))) }
                     when {
                         isSeries || (isMovie && episodeRegex.containsMatchIn(parsed.name)) -> if (!liveOnly) episodes += parsed
                         isMovie -> if (!liveOnly) movies += parsed

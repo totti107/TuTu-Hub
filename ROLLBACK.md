@@ -68,3 +68,4 @@ If sound gets worse (e.g. soundbar Dolby), revert the extension mode / dependenc
 - 3.17.2 = build 1029 (holding OK no longer clicks "Add to favorites" in the channel menu).
 - 3.18.0 = build 1030 (International / Women / Club friendlies added to Soccer).
 - 3.19.0 = build 1031 (adult: not in Recent, Live never reopens on them, relock on leaving, new PIN pad with remote number keys).
+- 3.19.1 = build 1032 (provider adult flag on single channels needs an adult-looking name; fixes Love Nature).

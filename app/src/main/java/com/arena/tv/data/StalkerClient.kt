@@ -260,7 +260,8 @@ class StalkerClient(private val http: OkHttpClient) {
                 group = genres[c.o("tv_genre_id").s()] ?: "Other",
                 logo = c.o("logo").s()?.let { if (it.startsWith("http")) it else "${base(p.server)}/stalker_portal/misc/logos/320/$it" },
                 tvgId = c.o("xmltv_id").s(), tvgName = c.o("name").s(), userAgent = p.ua ?: session(p).box.ua, referrer = null,
-                adult = c.o("censored").s() == "1" || c.o("tv_genre_id").s() in adultGenres,
+                // A single channel flagged by the portal only counts when its name looks adult too (e.g. "Love Nature" is flagged by some).
+                adult = c.o("tv_genre_id").s() in adultGenres || (c.o("censored").s() == "1" && Adult.isAdult(c.o("name").s())),
             )
         }
         val account = runCatching {

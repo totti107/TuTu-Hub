@@ -86,7 +86,8 @@ class XtreamClient(private val http: OkHttpClient) {
                 tvgName = o["name"].s,
                 userAgent = ua,
                 referrer = null,
-                adult = o["is_adult"].s == "1" || o["category_id"].s in adultCats,
+                // A single channel flagged by the provider only counts when its name looks adult too (e.g. "Love Nature" is flagged by some).
+                adult = o["category_id"].s in adultCats || (o["is_adult"].s == "1" && Adult.isAdult(o["name"].s)),
             )
         }
         return channels to account
