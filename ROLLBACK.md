@@ -69,3 +69,4 @@ If sound gets worse (e.g. soundbar Dolby), revert the extension mode / dependenc
 - 3.18.0 = build 1030 (International / Women / Club friendlies added to Soccer).
 - 3.19.0 = build 1031 (adult: not in Recent, Live never reopens on them, relock on leaving, new PIN pad with remote number keys).
 - 3.19.1 = build 1032 (provider adult flag on single channels needs an adult-looking name; fixes Love Nature).
+- 3.19.2 = build 1033 (fight scoreboard shows "vs" instead of 0 – 0).

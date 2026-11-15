@@ -503,7 +503,9 @@ private fun ScorePill(g: Game, goal: Boolean) {
         if (g.headToHead) {
             com.arena.tv.ui.components.Logo(g.home.logo, g.home.abbreviation, 22.dp, round = true)
             Text(" ${g.home.abbreviation.ifBlank { g.home.shortName }}", color = fg, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            Text("  ${g.home.score ?: 0} – ${g.away.score ?: 0}  ", color = fg, fontWeight = FontWeight.Black, fontSize = 16.sp)
+            // Fights have no running score: "Hokit vs Gane" instead of a meaningless 0 – 0.
+            val fight = g.league.sport == com.arena.tv.sports.Sport.MMA || g.league.sport == com.arena.tv.sports.Sport.WRESTLING
+            Text(if (fight) "  vs  " else "  ${g.home.score ?: 0} – ${g.away.score ?: 0}  ", color = fg, fontWeight = FontWeight.Black, fontSize = if (fight) 14.sp else 16.sp)
             Text("${g.away.abbreviation.ifBlank { g.away.shortName }} ", color = fg, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             com.arena.tv.ui.components.Logo(g.away.logo, g.away.abbreviation, 22.dp, round = true)
         } else Text(g.title ?: g.league.shortName, color = fg, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
