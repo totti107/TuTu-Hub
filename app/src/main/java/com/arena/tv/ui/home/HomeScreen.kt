@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FiberManualRecord
 import androidx.compose.material3.Icon
@@ -92,6 +93,7 @@ class HomeActions(
     val planner: () -> Unit = settings,
     val catchup: () -> Unit = settings,
     val reality: () -> Unit = settings,
+    val newToday: () -> Unit = settings,
 )
 
 /** Everything Home shows, gathered once so the tiles stay simple (and can be previewed with sample data). */
@@ -172,16 +174,16 @@ private fun WideHome(vm: HomeData, a: HomeActions) {
             PosterTile("Series", Icons.Rounded.Tv, vm.series, vm.seriesPosters, "Shows", a.series, Modifier.weight(1.2f))
         }
         Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            GuideTile(a, Modifier.weight(1.25f))
+            RealityTile(a, Modifier.weight(1.25f))
             ScoreTile(vm, a, Modifier.weight(0.8f))
             FavoritesTile(vm, a, Modifier.weight(0.75f))
             ResumeTile(vm, a, Modifier.weight(1.15f))
             SportsTile(vm, a, Modifier.weight(0.9f))
         }
         Row(Modifier.fillMaxWidth().height(62.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            SmallTile("TV Guide", "Now & next", Icons.Rounded.CalendarMonth, { a.live("guide") }, Modifier.weight(1f))
             SmallTile("Catch-up", "Watch again", Icons.Rounded.History, a.catchup, Modifier.weight(1f))
-            SmallTile("Reality TV", "Love Island…", Icons.Rounded.AutoAwesome, a.reality, Modifier.weight(1f))
-            SmallTile("Recordings", "Saved shows", Icons.Rounded.FiberManualRecord, a.recordings, Modifier.weight(1f))
+            SmallTile("New today", "Episodes", Icons.Rounded.NewReleases, a.newToday, Modifier.weight(1f))
             UpdateTile(vm, Modifier.weight(1f))
             SmallTile("Settings", "All options", Icons.Rounded.Settings, a.settings, Modifier.weight(1f))
         }
@@ -201,20 +203,24 @@ private fun PhoneHome(vm: HomeData, a: HomeActions) {
             SportsTile(vm, a, Modifier.weight(1f))
         }
         Row(Modifier.height(130.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            GuideTile(a, Modifier.weight(1f))
+            RealityTile(a, Modifier.weight(1f))
             FavoritesTile(vm, a, Modifier.weight(1f))
         }
         ResumeTile(vm, a, Modifier.fillMaxWidth().height(130.dp))
         Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SmallTile("TV Guide", null, Icons.Rounded.CalendarMonth, { a.live("guide") }, Modifier.weight(1f))
             SmallTile("Catch-up", null, Icons.Rounded.History, a.catchup, Modifier.weight(1f))
-            SmallTile("Reality TV", null, Icons.Rounded.AutoAwesome, a.reality, Modifier.weight(1f))
+        }
+        Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SmallTile("New today", null, Icons.Rounded.NewReleases, a.newToday, Modifier.weight(1f))
+            SmallTile("Recordings", null, Icons.Rounded.FiberManualRecord, a.recordings, Modifier.weight(1f))
         }
         Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SmallTile("Playlists", null, Icons.AutoMirrored.Rounded.PlaylistPlay, a.settings, Modifier.weight(1f))
             SmallTile("Reload", null, Icons.Rounded.Refresh, vm.reload, Modifier.weight(1f))
         }
         Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SmallTile("Recordings", null, Icons.Rounded.FiberManualRecord, a.recordings, Modifier.weight(1f))
+            SmallTile("Reality TV", null, Icons.Rounded.AutoAwesome, a.reality, Modifier.weight(1f))
             SmallTile("Planner", null, Icons.Rounded.CalendarMonth, a.planner, Modifier.weight(1f))
         }
         Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -311,6 +317,17 @@ private fun PosterTile(
             Text(if (count > 0) big(count) else "—", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
             Text(if (count > 0) unit else "Not loaded", color = ArenaColors.Muted, fontSize = 14.sp)
         }
+    }
+}
+
+@Composable
+private fun RealityTile(a: HomeActions, modifier: Modifier) = Tile(modifier, a.reality) {
+    Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceBetween) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBubble(Icons.Rounded.AutoAwesome, 36.dp); Spacer(Modifier.width(10.dp))
+            Text("Reality TV 💅", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Text("Love Island, Kardashians, Housewives & more", color = ArenaColors.Muted, fontSize = 14.sp)
     }
 }
 

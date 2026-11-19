@@ -76,7 +76,7 @@ object Reality {
     fun isRealityChannel(name: String) = channelWords.containsMatchIn(name)
 }
 
-private data class RealityData(val now: List<ShowOnChannel>, val later: List<ShowOnChannel>, val earlier: List<ShowOnChannel>, val channels: List<ChannelEntity>,
+private data class RealityData(val nonstop: List<ShowOnChannel>, val now: List<ShowOnChannel>, val later: List<ShowOnChannel>, val earlier: List<ShowOnChannel>, val channels: List<ChannelEntity>,
     val series: List<com.arena.tv.data.VodEntity> = emptyList(), val movies: List<com.arena.tv.data.VodEntity> = emptyList())
 
 /** Home → Reality TV: Love Island, the Kardashians, Housewives & co. — on now, later, and earlier (catch-up). */
@@ -92,10 +92,15 @@ fun RealityScreen(onOpenVod: (String) -> Unit = {}) {
         val shows = progs.mapNotNull { p -> chans[p.epgKey]?.let { list -> ShowOnChannel(p, list.firstOrNull { it.catchupDays > 0 } ?: list.first()) } }
             .groupBy { it.program.title.lowercase() + "|" + it.program.start }.values.map { g -> g.firstOrNull { it.channel.catchupDays > 0 } ?: g.first() }
         val channels = app.db.channels().safeOnce().filter { Reality.isRealityChannel(it.name) }.distinctBy { it.name.lowercase() }.take(60)
+        // "24/7" channels loop one show all day: they get their own row instead of crowding "On now".
+        val nonstopRe = Regex("""24\s*/\s*7|24-7""")
+        fun nonstop(s: ShowOnChannel) = nonstopRe.containsMatchIn(s.channel.name) || nonstopRe.containsMatchIn(s.program.title) || nonstopRe.containsMatchIn(s.channel.groupTitle)
+        val (loop, regular) = shows.partition(::nonstop)
         value = RealityData(
-            now = shows.filter { it.program.start <= now && it.program.stop > now }.sortedBy { it.program.start },
-            later = shows.filter { it.program.start > now }.sortedBy { it.program.start }.take(60),
-            earlier = shows.filter { it.program.stop <= now && it.channel.catchupDays > 0 }.sortedByDescending { it.program.start }.take(60),
+            nonstop = loop.filter { it.program.start <= now && it.program.stop > now }.distinctBy { it.channel.id }.sortedBy { it.channel.name.lowercase() },
+            now = regular.filter { it.program.start <= now && it.program.stop > now }.sortedBy { it.program.start },
+            later = regular.filter { it.program.start > now }.sortedBy { it.program.start }.take(60),
+            earlier = regular.filter { it.program.stop <= now && it.channel.catchupDays > 0 }.sortedByDescending { it.program.start }.take(60),
             channels = channels,
             series = runCatching { Reality.library(app, com.arena.tv.data.VodKind.SERIES) }.getOrDefault(emptyList()),
         )
@@ -111,7 +116,7 @@ fun RealityScreen(onOpenVod: (String) -> Unit = {}) {
             }
         }
         if (d == null) { item { CircularProgressIndicator(Modifier.padding(40.dp)) }; return@LazyColumn }
-        if (d.now.isEmpty() && d.later.isEmpty() && d.earlier.isEmpty() && d.series.isEmpty()) item {
+        if (d.nonstop.isEmpty() && d.now.isEmpty() && d.later.isEmpty() && d.earlier.isEmpty() && d.series.isEmpty()) item {
             Text("Nothing from these shows in your TV guide right now. Check the channels below, or reload the TV guide in Live TV.",
                 color = ArenaColors.Muted, modifier = Modifier.padding(24.dp))
         }
@@ -119,6 +124,7 @@ fun RealityScreen(onOpenVod: (String) -> Unit = {}) {
         item { ShowRail("Watch again", "aired earlier · catch-up", d.earlier, { "⏪ " + airedLabel(it.program.start) }) { s ->
             VodPlayerActivity.startCatchup(context, s.channel.id, CatchupItem(s.program.title, s.program.start, s.program.stop, s.program.description))
         } }
+        item { ShowRail("24/7 channels", "the same show, all day", d.nonstop, { "● Non-stop" }) { watchLive(it.channel) } }
         item { ShowRail("Coming up", "today and tomorrow", d.later, { airedOrLater(it.program.start) }) { watchLive(it.channel) } }
         item { PosterRail("Series to binge", "${d.series.size} in your library", d.series, onOpenVod) }
         if (d.channels.isNotEmpty()) item {
