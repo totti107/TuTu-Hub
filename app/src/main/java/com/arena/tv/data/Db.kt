@@ -109,6 +109,9 @@ interface ChannelDao {
     @Query("SELECT COUNT(*) FROM recent_channels r JOIN channels c ON c.id = r.channelId WHERE c.visible = 1 AND c.adult = 0") fun recentCount(): Flow<Int>
     @Query("SELECT COUNT(*) FROM favorite_channels f JOIN channels c ON c.id = f.channelId WHERE c.visible = 1") fun favoriteCount(): Flow<Int>
     @Query("SELECT * FROM channels WHERE id = :id") suspend fun byId(id: String): ChannelEntity?
+    @Query("SELECT * FROM channels WHERE visible = 1 AND adult = 0 AND catchupDays > 0 ORDER BY position") suspend fun catchupChannels(): List<ChannelEntity>
+    @Query("SELECT * FROM channels WHERE visible = 1 AND adult = 0 AND epgKey IN (:keys) ORDER BY position") suspend fun safeByEpgKeys(keys: List<String>): List<ChannelEntity>
+    @Query("SELECT * FROM channels WHERE visible = 1 AND adult = 0 ORDER BY position") suspend fun safeOnce(): List<ChannelEntity>
     @Query("SELECT COUNT(*) FROM channels WHERE visible = 1 AND adult = 0 AND epgKey IS NOT NULL") fun withGuideCount(): Flow<Int>
     @Query("SELECT COUNT(*) FROM channels WHERE visible = 1 AND adult = 0") fun safeCount(): Flow<Int>
     @Query("SELECT * FROM channels WHERE visible = 1 AND adult = 0 AND epgKey IS NULL ORDER BY position LIMIT 300") suspend fun withoutGuide(): List<ChannelEntity>
@@ -122,7 +125,7 @@ interface ChannelDao {
     suspend fun liteByName(word: String, limit: Int): List<ChannelLite>
     @Query("SELECT id, name, groupTitle, epgKey FROM channels WHERE id IN (:ids)") suspend fun liteByIds(ids: List<String>): List<ChannelLite>
     /** Channels that need a guide: visible ones only (hidden categories are skipped to save time). */
-    @Query("SELECT id, name, tvgId, tvgName, groupTitle FROM channels WHERE playlistId = :pid AND visible = 1") suspend fun epgCandidates(pid: String): List<EpgCandidate>
+    @Query("SELECT id, name, tvgId, tvgName, groupTitle, catchupDays FROM channels WHERE playlistId = :pid AND visible = 1") suspend fun epgCandidates(pid: String): List<EpgCandidate>
     @Query("UPDATE channels SET epgKey = :key WHERE id = :id") suspend fun setEpgKey(id: String, key: String?)
     @Query("SELECT id, epgKey FROM channels WHERE playlistId = :pid AND epgKey IS NOT NULL") suspend fun epgKeysOf(pid: String): List<ChannelEpgKey>
     @Query("UPDATE channels SET epgKey = NULL WHERE playlistId = :pid") suspend fun clearEpgKeys(pid: String)
@@ -136,7 +139,7 @@ interface ChannelDao {
 }
 
 data class ChannelEpgKey(val id: String, val epgKey: String)
-data class EpgCandidate(val id: String, val name: String, val tvgId: String?, val tvgName: String?, val groupTitle: String)
+data class EpgCandidate(val id: String, val name: String, val tvgId: String?, val tvgName: String?, val groupTitle: String, val catchupDays: Int = 0)
 
 @Dao
 interface ProgramDao {

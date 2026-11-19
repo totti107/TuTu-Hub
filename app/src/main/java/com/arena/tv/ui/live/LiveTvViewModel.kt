@@ -150,7 +150,8 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
     val schedule: StateFlow<List<ProgramEntity>> = combine(selected, ticker) { s, now -> s to now }
         .mapLatest { (s, now) ->
             val key = s?.epgKey ?: return@mapLatest emptyList()
-            c.db.programs().schedule(key, now - 3 * 3600_000L, now + 18 * 3600_000L)
+            // Catch-up channels show the last day too: those shows can be watched again.
+            c.db.programs().schedule(key, now - (if (s.catchupDays > 0) 26 else 3) * 3600_000L, now + 18 * 3600_000L)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

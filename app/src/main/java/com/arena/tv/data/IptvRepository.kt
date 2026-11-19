@@ -318,6 +318,8 @@ class IptvRepository(
     private inner class GuideImport(private val s: AppSettings) {
         private val now = System.currentTimeMillis()
         private val keepFrom = now - 3 * 3600_000L
+        /** Channels with catch-up keep a day of past guide, so the TV guide can go back and play what aired. */
+        private val archiveFrom = now - 26 * 3600_000L
         private val keepTo = now + 36 * 3600_000L
         private val files = HashMap<String, java.io.File>()            // url -> downloaded copy
         private val insertedKeys = HashSet<String>()                    // guide channels stored in this import
@@ -359,7 +361,8 @@ class IptvRepository(
                 val mapping = HashMap<String, String>()
                 for (c in candidates) {
                     val chId = db.channels().byId(c.id)?.url?.removePrefix(StalkerClient.SCHEME)?.substringBefore('|') ?: continue
-                    val list = guide[chId].orEmpty().filter { it.stop > keepFrom && it.start < keepTo }
+                    val since = if (c.catchupDays > 0) archiveFrom else keepFrom
+                    val list = guide[chId].orEmpty().filter { it.stop > since && it.start < keepTo }
                     if (list.isEmpty()) continue
                     val key = "stk:${p.id}:$chId"
                     mapping[c.id] = key
@@ -385,6 +388,7 @@ class IptvRepository(
                 val epgNames = HashMap<String, String>()
                 val epgIds = HashSet<String>()
                 var wanted: Set<String> = emptySet()
+                var archived: Set<String> = emptySet()
                 val batch = ArrayList<ProgramEntity>(2000)
                 fun flush() {
                     if (batch.isEmpty()) return
@@ -414,9 +418,10 @@ class IptvRepository(
                                     if (key != null) mapping[c.id] = key
                                 }
                                 wanted = mapping.values.toHashSet().apply { removeAll(insertedKeys) }
+                                archived = candidates.filter { it.catchupDays > 0 }.mapNotNull { mapping[it.id] }.toHashSet()
                             },
                             onProgram = { pr ->
-                                if (pr.epgKey in wanted && pr.stop > keepFrom && pr.start < keepTo) {
+                                if (pr.epgKey in wanted && pr.stop > (if (pr.epgKey in archived) archiveFrom else keepFrom) && pr.start < keepTo) {
                                     batch += pr
                                     if (batch.size >= 2000) flush()
                                 }

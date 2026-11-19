@@ -185,8 +185,11 @@ private fun Graph(nav: NavHostController, openSettings: () -> Unit) {
                 game = { nav.navigate("game/${it.id}") }, vod = { nav.navigate("vod/$it") }, settings = openSettings,
                 recordings = { ctx.app.settingsPage.value = "RECORDING"; openSettings() },
                 planner = { ctx.app.settingsPage.value = "PLANNER"; openSettings() },
+                catchup = { nav.navigate("catchup") }, reality = { nav.navigate("reality") },
             ))
         }
+        composable("catchup") { com.arena.tv.ui.home.CatchupScreen() }
+        composable("reality") { com.arena.tv.ui.home.RealityScreen() }
         composable(Section.SPORTS.route) {
             SportsHubScreen(onOpenGame = { nav.navigate("game/${it.id}") }, onOpenSettings = openSettings)
         }

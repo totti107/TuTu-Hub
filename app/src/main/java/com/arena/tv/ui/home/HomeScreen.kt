@@ -90,6 +90,8 @@ class HomeActions(
     val settings: () -> Unit,
     val recordings: () -> Unit = settings,
     val planner: () -> Unit = settings,
+    val catchup: () -> Unit = settings,
+    val reality: () -> Unit = settings,
 )
 
 /** Everything Home shows, gathered once so the tiles stay simple (and can be previewed with sample data). */
@@ -177,9 +179,9 @@ private fun WideHome(vm: HomeData, a: HomeActions) {
             SportsTile(vm, a, Modifier.weight(0.9f))
         }
         Row(Modifier.fillMaxWidth().height(62.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            SmallTile("Playlists", "Manage", Icons.AutoMirrored.Rounded.PlaylistPlay, a.settings, Modifier.weight(1f))
+            SmallTile("Catch-up", "Watch again", Icons.Rounded.History, a.catchup, Modifier.weight(1f))
+            SmallTile("Reality TV", "Love Island…", Icons.Rounded.AutoAwesome, a.reality, Modifier.weight(1f))
             SmallTile("Recordings", "Saved shows", Icons.Rounded.FiberManualRecord, a.recordings, Modifier.weight(1f))
-            SmallTile("Reload", "Channels", Icons.Rounded.Refresh, vm.reload, Modifier.weight(1f))
             UpdateTile(vm, Modifier.weight(1f))
             SmallTile("Settings", "All options", Icons.Rounded.Settings, a.settings, Modifier.weight(1f))
         }
@@ -203,6 +205,10 @@ private fun PhoneHome(vm: HomeData, a: HomeActions) {
             FavoritesTile(vm, a, Modifier.weight(1f))
         }
         ResumeTile(vm, a, Modifier.fillMaxWidth().height(130.dp))
+        Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SmallTile("Catch-up", null, Icons.Rounded.History, a.catchup, Modifier.weight(1f))
+            SmallTile("Reality TV", null, Icons.Rounded.AutoAwesome, a.reality, Modifier.weight(1f))
+        }
         Row(Modifier.height(62.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SmallTile("Playlists", null, Icons.AutoMirrored.Rounded.PlaylistPlay, a.settings, Modifier.weight(1f))
             SmallTile("Reload", null, Icons.Rounded.Refresh, vm.reload, Modifier.weight(1f))

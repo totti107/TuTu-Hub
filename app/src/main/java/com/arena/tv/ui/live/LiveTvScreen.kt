@@ -376,7 +376,9 @@ private fun PreviewPane(vm: LiveTvViewModel, ch: ChannelEntity?, modifier: Modif
         }
         Spacer(Modifier.height(6.dp))
         if (ch != null && schedule.isEmpty()) Text(if (ch.epgKey == null) "No TV guide for this channel" else "No schedule", color = ArenaColors.Muted)
-        ScheduleList(ch?.id, schedule, now)
+        ScheduleList(ch?.id, schedule, now, onCatchup = if (ch != null && ch.catchupDays > 0) { p ->
+            com.arena.tv.ui.player.VodPlayerActivity.startCatchup(context, ch.id, com.arena.tv.data.CatchupItem(p.title, p.start, p.stop, p.description))
+        } else null)
     }
 }
 
@@ -450,9 +452,11 @@ private fun EpgGrid(vm: LiveTvViewModel, modifier: Modifier) {
     val channels by vm.channels.collectAsStateWithLifecycle()
     val selected by vm.selected.collectAsStateWithLifecycle()
     val now = remember { System.currentTimeMillis() }
-    val from = remember { now - (now % 1_800_000) - 3_600_000 }   // an hour before the current half hour
     val rows = channels.take(300)
-    val programs by remember(rows.map { it.id }) { vm.gridPrograms(rows, from, from + 9 * 3600_000L) }.collectAsState(initial = emptyMap())
+    // An hour back; a whole day back when the channels have catch-up (those shows can be played again).
+    val archive = rows.any { it.catchupDays > 0 }
+    val from = remember(archive) { now - (now % 1_800_000) - (if (archive) 24 else 1) * 3_600_000L }
+    val programs by remember(rows.map { it.id }, from) { vm.gridPrograms(rows, from, now + 8 * 3600_000L) }.collectAsState(initial = emptyMap())
     EpgGridContent(rows, programs, selected, now, from, vm::select, modifier)
 }
 
@@ -463,12 +467,12 @@ internal fun EpgGridContent(rows: List<ChannelEntity>, programs: Map<String, Lis
     val wide = LocalWide.current
     val c = com.arena.tv.ui.components.LocalCompactChrome.current
     val context = LocalContext.current
-    val to = from + 9 * 3600_000L
+    val to = now - (now % 1_800_000) + 8 * 3600_000L
     val dpPerMin = if (!wide) 3.2f else if (c) 3.8f else 4.6f
     val nameW = if (!wide) 130.dp else if (c) 210.dp else 300.dp
     val rowH = if (c || !wide) 54.dp else 64.dp
     val h = rememberScrollState()
-    LaunchedEffect(Unit) { h.scrollTo((((now - from) / 60_000 - 30) * dpPerMin * context.resources.displayMetrics.density).toInt().coerceAtLeast(0)) }
+    LaunchedEffect(from) { h.scrollTo((((now - from) / 60_000 - 30) * dpPerMin * context.resources.displayMetrics.density).toInt().coerceAtLeast(0)) }
     fun x(t: Long) = (((t - from) / 60_000f) * dpPerMin).dp
     fun play(ch: ChannelEntity) = PlayerActivity.start(context, ch.id, rows.map { it.id }, null)
     val scrolled = with(androidx.compose.ui.platform.LocalDensity.current) { h.value.toDp() }
@@ -525,13 +529,19 @@ internal fun EpgGridContent(rows: List<ChannelEntity>, programs: Map<String, Lis
                                     Modifier.offset(x = x(st)).width(x(e) - x(st) - 3.dp).fillMaxHeight().clip(RoundedCornerShape(10.dp))
                                         .background(if (live) ArenaColors.SurfaceHi else ArenaColors.Surface)
                                         .then(if (live) Modifier.border(if (isSel) 2.dp else 1.dp, if (isSel) Color.White else Color(0x66FFFFFF), RoundedCornerShape(10.dp)) else Modifier)
-                                        .clickable { if (live && isSel) play(ch) else vm.select(ch) }
+                                        .clickable {
+                                            // A show that already aired on a catch-up channel plays from its start.
+                                            if (past && ch.catchupDays > 0) com.arena.tv.ui.player.VodPlayerActivity.startCatchup(context, ch.id,
+                                                com.arena.tv.data.CatchupItem(p.title, p.start, p.stop, p.description))
+                                            else if (live && isSel) play(ch) else vm.select(ch)
+                                        }
                                         // Keep the title readable when the show started left of the visible area.
                                         .padding(start = 10.dp + (scrolled - x(st)).coerceIn(0.dp, (x(e) - x(st) - 110.dp).coerceAtLeast(0.dp)), end = 10.dp, top = 4.dp, bottom = 4.dp),
                                     verticalArrangement = Arrangement.Center,
                                 ) {
-                                    Text(p.title, fontSize = if (c) 13.sp else 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        fontWeight = if (live) FontWeight.SemiBold else FontWeight.Medium, color = if (past) ArenaColors.Muted else ArenaColors.Text)
+                                    Text((if (past && ch.catchupDays > 0) "⏪ " else "") + p.title, fontSize = if (c) 13.sp else 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        fontWeight = if (live) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = if (past && ch.catchupDays > 0) Color(0xFFBFD4FF) else if (past) ArenaColors.Muted else ArenaColors.Text)
                                     if (x(e) - x(st) > 90.dp) Row(verticalAlignment = Alignment.CenterVertically) {
                                         if (live) { Box(Modifier.size(6.dp).clip(CircleShape).background(ArenaColors.Accent)); Spacer(Modifier.width(5.dp)) }
                                         Text(Time.range(p.start, p.stop), color = ArenaColors.Muted, fontSize = if (c) 11.sp else 13.sp, maxLines = 1)
@@ -550,7 +560,7 @@ internal fun EpgGridContent(rows: List<ChannelEntity>, programs: Map<String, Lis
 
 @Composable
 internal fun ScheduleList(channelId: String?, schedule: List<ProgramEntity>, now: Long,
-    marks: Map<Long, String> = emptyMap(), onPick: ((ProgramEntity) -> Unit)? = null) {
+    marks: Map<Long, String> = emptyMap(), onPick: ((ProgramEntity) -> Unit)? = null, onCatchup: ((ProgramEntity) -> Unit)? = null) {
         val listState = rememberLazyListState()
         val liveIndex = schedule.indexOfFirst { it.start <= now && it.stop > now }
         LaunchedEffect(channelId, schedule.size) { if (liveIndex > 1) listState.scrollToItem(liveIndex - 1) }
@@ -562,6 +572,7 @@ internal fun ScheduleList(channelId: String?, schedule: List<ProgramEntity>, now
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (live) ArenaColors.SurfaceHi else Color.Transparent)
                         .then(if (live) Modifier.drawBehind { drawRect(Color.White, size = Size(3.dp.toPx(), size.height)) } else Modifier)
                         .then(if (onPick != null && !past) Modifier.clickable { onPick(p) } else Modifier)
+                        .then(if (onCatchup != null && past) Modifier.focusOutline(RoundedCornerShape(10.dp)).clickable { onCatchup(p) } else Modifier)
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -571,6 +582,8 @@ internal fun ScheduleList(channelId: String?, schedule: List<ProgramEntity>, now
                         fontWeight = if (live) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     marks[p.start]?.let { m -> Text(m, color = if (m.startsWith("●")) ArenaColors.Live else ArenaColors.Accent, fontSize = 12.sp,
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp)) }
+                    if (onCatchup != null && past) Icon(Icons.Rounded.History, "Watch again", tint = ArenaColors.Blue,
+                        modifier = Modifier.padding(start = 8.dp).size(16.dp))
                     if (live) Text("LIVE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp,
                         modifier = Modifier.padding(start = 12.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x33FFFFFF)).padding(horizontal = 8.dp, vertical = 3.dp))
                     else Text(Time.clock(p.start), color = ArenaColors.Muted, fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
