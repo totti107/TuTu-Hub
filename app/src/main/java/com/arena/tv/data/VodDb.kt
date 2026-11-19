@@ -127,6 +127,8 @@ interface VodDao {
 
     @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND adult = 0 AND name LIKE '%' || :q || '%' ORDER BY position LIMIT 200")
     suspend fun search(kind: Int, q: String): List<VodEntity>
+    @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND adult = 0 AND categoryId IN (:cats) ORDER BY position LIMIT 400")
+    suspend fun inCategories(kind: Int, cats: List<String>): List<VodEntity>
     @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND adult = 0 ORDER BY added DESC LIMIT :n") suspend fun newest(kind: Int, n: Int): List<VodEntity>
     @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND categoryId = :cat ORDER BY added DESC LIMIT :n") suspend fun newestIn(kind: Int, cat: String, n: Int): List<VodEntity>
     @Query("SELECT * FROM vod WHERE kind = :kind AND visible = 1 AND adult = 0 AND poster IS NOT NULL AND rating >= 7 AND added > :since ORDER BY added DESC LIMIT :n")

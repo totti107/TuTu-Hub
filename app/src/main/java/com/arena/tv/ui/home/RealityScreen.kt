@@ -51,16 +51,37 @@ object Reality {
     )
     val match: String = shows.joinToString(" OR ")
 
+    /** Plain words for finding these shows in the Movies / Series library by name. */
+    val titles = listOf(
+        "love island", "kardashian", "housewives", "bachelor", "below deck", "vanderpump", "selling sunset", "selling the oc", "90 day",
+        "married at first sight", "too hot to handle", "dance moms", "jersey shore", "teen mom", "say yes to the dress", "love is blind",
+        "summer house", "southern charm", "made in chelsea", "only way is essex", "geordie shore", "ex on the beach", "temptation island",
+        "love after lockup", "basketball wives", "hip hop", "little women", "sister wives", "project runway", "top model", "botched",
+        "winter house", "bling empire", "perfect match", "the circle", "big brother", "real world", "family karma",
+        "marriage boot camp", "the kardashians", "love triangle", "real girlfriends", "dubai bling", "buying beverly hills", "the hills: new beginnings",
+        "laguna beach", "flavor of love", "rock of love", "my super sweet 16", "catfish", "love & marriage",
+    )
+
+    /** Reality shows in the library: matching names, plus whole categories the provider calls "Reality". */
+    suspend fun library(app: com.arena.tv.AppContainer, kind: Int): List<com.arena.tv.data.VodEntity> {
+        val vod = app.db.vod()
+        val byName = titles.flatMap { vod.search(kind, it) }
+        val cats = vod.categoriesOnce(kind).filter { !it.adult && Regex("""(?i)reality|real ?tv|lifestyle|dating""").containsMatchIn(it.name) }.map { it.id }
+        val byCat = if (cats.isEmpty()) emptyList() else vod.inCategories(kind, cats)
+        return (byName + byCat).distinctBy { it.key }.distinctBy { it.name.lowercase().replace(Regex("""\W+"""), "") }
+    }
+
     /** Channel names that are mostly reality / lifestyle. */
     private val channelWords = Regex("""(?i)(^|[^a-z])(bravo|e!|e! entertainment|tlc|lifetime|oxygen|we ?tv|mtv|own|itv ?2|itvbe|hayu|slice|discovery life|e entertainment)([^a-z]|$)""")
     fun isRealityChannel(name: String) = channelWords.containsMatchIn(name)
 }
 
-private data class RealityData(val now: List<ShowOnChannel>, val later: List<ShowOnChannel>, val earlier: List<ShowOnChannel>, val channels: List<ChannelEntity>)
+private data class RealityData(val now: List<ShowOnChannel>, val later: List<ShowOnChannel>, val earlier: List<ShowOnChannel>, val channels: List<ChannelEntity>,
+    val series: List<com.arena.tv.data.VodEntity> = emptyList(), val movies: List<com.arena.tv.data.VodEntity> = emptyList())
 
 /** Home → Reality TV: Love Island, the Kardashians, Housewives & co. — on now, later, and earlier (catch-up). */
 @Composable
-fun RealityScreen() {
+fun RealityScreen(onOpenVod: (String) -> Unit = {}) {
     val context = LocalContext.current
     val app = context.app
     val data by produceState<RealityData?>(null) {
@@ -76,6 +97,7 @@ fun RealityScreen() {
             later = shows.filter { it.program.start > now }.sortedBy { it.program.start }.take(60),
             earlier = shows.filter { it.program.stop <= now && it.channel.catchupDays > 0 }.sortedByDescending { it.program.start }.take(60),
             channels = channels,
+            series = runCatching { Reality.library(app, com.arena.tv.data.VodKind.SERIES) }.getOrDefault(emptyList()),
         )
     }
     fun watchLive(ch: ChannelEntity) = PlayerActivity.start(context, ch.id, listOf(ch.id), null)
@@ -89,7 +111,7 @@ fun RealityScreen() {
             }
         }
         if (d == null) { item { CircularProgressIndicator(Modifier.padding(40.dp)) }; return@LazyColumn }
-        if (d.now.isEmpty() && d.later.isEmpty() && d.earlier.isEmpty()) item {
+        if (d.now.isEmpty() && d.later.isEmpty() && d.earlier.isEmpty() && d.series.isEmpty()) item {
             Text("Nothing from these shows in your TV guide right now. Check the channels below, or reload the TV guide in Live TV.",
                 color = ArenaColors.Muted, modifier = Modifier.padding(24.dp))
         }
@@ -98,6 +120,7 @@ fun RealityScreen() {
             VodPlayerActivity.startCatchup(context, s.channel.id, CatchupItem(s.program.title, s.program.start, s.program.stop, s.program.description))
         } }
         item { ShowRail("Coming up", "today and tomorrow", d.later, { airedOrLater(it.program.start) }) { watchLive(it.channel) } }
+        item { PosterRail("Series to binge", "${d.series.size} in your library", d.series, onOpenVod) }
         if (d.channels.isNotEmpty()) item {
             Column(Modifier.padding(top = 18.dp)) {
                 Text("Reality channels", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
@@ -122,4 +145,18 @@ fun RealityScreen() {
 private fun airedOrLater(start: Long): String {
     val tomorrow = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, 1); set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0) }.timeInMillis
     return (if (start >= tomorrow) "Tomorrow " else "Today ") + Time.clock(start)
+}
+
+@Composable
+private fun PosterRail(title: String, hint: String?, items: List<com.arena.tv.data.VodEntity>, onOpen: (String) -> Unit) {
+    if (items.isEmpty()) return
+    Column(Modifier.padding(top = 18.dp)) {
+        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp)) {
+            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            hint?.let { Text("  $it", color = ArenaColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 2.dp)) }
+        }
+        LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items, key = { it.key }) { v -> com.arena.tv.ui.vod.PosterCard(v, null, false, Modifier.width(140.dp)) { onOpen(v.key) } }
+        }
+    }
 }

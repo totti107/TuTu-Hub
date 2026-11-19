@@ -41,6 +41,7 @@ const val CAT_ALL = "__all"
 const val CAT_FAV = "__fav"
 const val CAT_CONTINUE = "__continue"
 const val CAT_WATCHLIST = "__watchlist"
+const val CAT_REALITY = "__reality"
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class VodViewModel(private val c: AppContainer, val kind: Int) : ViewModel() {
@@ -108,6 +109,7 @@ class VodViewModel(private val c: AppContainer, val kind: Int) : ViewModel() {
                 q.isNotEmpty() -> if (offset == 0) c.db.vod().search(kind, q) else emptyList()
                 cat == CAT_FAV -> if (offset == 0) favoritesNow() else emptyList()
                 cat == CAT_CONTINUE -> if (offset == 0) continueItems().first else emptyList()
+                cat == CAT_REALITY -> if (offset == 0) com.arena.tv.ui.home.Reality.library(c, kind) else emptyList()
                 cat == CAT_WATCHLIST -> if (offset == 0) c.trakt.watchlistInLibrary().filter { it.kind == kind } else emptyList()
                 else -> {
                     val cid = cat.takeIf { it != CAT_ALL }

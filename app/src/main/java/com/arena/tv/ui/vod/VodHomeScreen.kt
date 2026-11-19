@@ -278,6 +278,7 @@ private fun CategoryPane(vm: VodViewModel, modifier: Modifier) {
         item { PaneLabel("My collections") }
         item { PaneItem("Favorites", null, cat == CAT_FAV, { pick(CAT_FAV) }) }
         item { PaneItem("Continue watching", null, cat == CAT_CONTINUE, { pick(CAT_CONTINUE) }) }
+        if (vm.kind == VodKind.SERIES) item { PaneItem("Reality TV 💅", null, cat == CAT_REALITY, { pick(CAT_REALITY) }) }
         if (trakt.connected) item { PaneItem("Trakt watchlist", null, cat == CAT_WATCHLIST, { pick(CAT_WATCHLIST) }) }
         item { PaneLabel("Categories") }
         items(cats.filter { cq.isBlank() || it.name.contains(cq, true) }, key = { it.key }) { c ->
@@ -296,6 +297,7 @@ private fun CategoryChips(vm: VodViewModel) {
     val open by vm.unlocked.collectAsStateWithLifecycle()
     val all = buildList {
         add(CAT_ALL to "All"); add(CAT_FAV to "★ Favorites"); add(CAT_CONTINUE to "Continue")
+        if (vm.kind == VodKind.SERIES) add(CAT_REALITY to "Reality TV 💅")
         if (trakt.connected) add(CAT_WATCHLIST to "Watchlist")
         cats.forEach { add(it.id to if (it.adult && !open) "🔒 ${it.name}" else it.name) }
     }
