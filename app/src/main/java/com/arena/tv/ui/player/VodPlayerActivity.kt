@@ -67,6 +67,12 @@ class VodPlayerActivity : ComponentActivity() {
         fun startFile(context: Context, path: String, title: String, subtitle: String?) {
             context.startActivity(Intent(context, VodPlayerActivity::class.java).putExtra("file", path).putExtra("title", title).putExtra("subtitle", subtitle))
         }
+        /** Watch a past programme of a live channel (catch-up). */
+        fun startCatchup(context: Context, channelId: String, item: com.arena.tv.data.CatchupItem) {
+            context.startActivity(Intent(context, VodPlayerActivity::class.java).putExtra("catchupCh", channelId)
+                .putExtra("cuTitle", item.title).putExtra("cuStart", item.start).putExtra("cuStop", item.stop)
+                .putExtra("cuDesc", item.description).putExtra("cuRef", item.ref))
+        }
         fun start(context: Context, vodKey: String, episodeKey: String?) {
             context.startActivity(Intent(context, VodPlayerActivity::class.java).putExtra("vod", vodKey).putExtra("ep", episodeKey))
         }
@@ -159,6 +165,19 @@ class VodPlayerActivity : ComponentActivity() {
             subtitle.value = intent.getStringExtra("subtitle")
             player.setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(java.io.File(file))))
             player.prepare(); player.play()
+        } else if (intent.getStringExtra("catchupCh") != null) {
+            // Catch-up: a past programme of a live channel, played like a movie (seek bar, pause).
+            val item = com.arena.tv.data.CatchupItem(intent.getStringExtra("cuTitle") ?: "Programme", intent.getLongExtra("cuStart", 0),
+                intent.getLongExtra("cuStop", 0), intent.getStringExtra("cuDesc"), intent.getStringExtra("cuRef"))
+            title.value = item.title
+            lifecycleScope.launch {
+                val ch = app.db.channels().byId(intent.getStringExtra("catchupCh")!!) ?: return@launch finish()
+                subtitle.value = "⏪ ${ch.name} · " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(item.start))
+                val url = runCatching { app.catchup.url(ch, item) }.getOrElse { error.value = "Catch-up couldn't start: ${it.message ?: "the provider didn't answer"}"; return@launch }
+                currentUrl = url; currentUa = ch.userAgent; decoderRetried = false
+                player.setMediaSource(Streams.source(this@VodPlayerActivity, app.http, url, ch.userAgent, ch.referrer))
+                player.prepare(); player.play()
+            }
         } else {
         val vodKey = intent.getStringExtra("vod") ?: return finish()
             val epKey = intent.getStringExtra("ep")

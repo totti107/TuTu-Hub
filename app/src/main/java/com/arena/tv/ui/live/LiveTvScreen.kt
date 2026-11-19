@@ -34,6 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Hd
@@ -315,7 +316,11 @@ internal fun ChannelCard(number: Int, ch: ChannelEntity, nn: NowNext?, selected:
         RingLogo(ch, now?.let { Time.progress(it.start, it.stop) }, 36.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(ch.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(ch.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, false))
+                CatchupMark(ch, Modifier.padding(start = 6.dp))
+            }
             if (now != null) {
                 Row {
                     Text(now.title, color = Color(0xCCFFFFFF), fontSize = 13.sp, lineHeight = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -361,7 +366,14 @@ private fun PreviewPane(vm: LiveTvViewModel, ch: ChannelEntity?, modifier: Modif
             }
         }
         Spacer(Modifier.height(12.dp))
-        Text(ch?.name ?: "", fontWeight = FontWeight.Bold, fontSize = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(ch?.name ?: "", fontWeight = FontWeight.Bold, fontSize = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (ch != null && ch.catchupDays > 0) androidx.compose.material3.OutlinedButton(onClick = { vm.catchupFor.value = ch }, modifier = Modifier.focusOutline(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                Icon(androidx.compose.material.icons.Icons.Rounded.History, null, tint = ArenaColors.Blue, modifier = Modifier.size(18.dp))
+                Text("  Catch-up", fontSize = 14.sp)
+            }
+        }
         Spacer(Modifier.height(6.dp))
         if (ch != null && schedule.isEmpty()) Text(if (ch.epgKey == null) "No TV guide for this channel" else "No schedule", color = ArenaColors.Muted)
         ScheduleList(ch?.id, schedule, now)
@@ -591,6 +603,9 @@ internal fun ChannelMenus(vm: LiveTvViewModel) {
                     } else !freshPress
                 }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     MenuRow(if (fav) "★  Remove from favorites" else "☆  Add to favorites") { vm.toggleFavorite(ch.id); vm.menuFor.value = null }
+                    if (ch.catchupDays > 0) MenuRow("⏪  Catch-up · watch what aired (${ch.catchupDays} day${if (ch.catchupDays == 1) "" else "s"})") {
+                        vm.menuFor.value = null; vm.catchupFor.value = ch
+                    }
                     MenuRow("🚫  Hide this channel") { vm.hideChannel(ch) }
                     MenuRow("🗂  Hide category \"${ch.groupTitle}\"") { vm.hideCategory(ch) }
                     Text("Hidden things come back in Settings → Playlists (Hidden channels · Choose categories).",
@@ -599,6 +614,7 @@ internal fun ChannelMenus(vm: LiveTvViewModel) {
             },
             confirmButton = { androidx.compose.material3.TextButton(onClick = { vm.menuFor.value = null }, modifier = Modifier.focusOutline()) { Text("Cancel") } })
     }
+    vm.catchupFor.collectAsStateWithLifecycle().value?.let { ch -> CatchupDialog(vm.container, ch) { vm.catchupFor.value = null } }
     hidden?.let { ch ->
         Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.BottomCenter) {
             Row(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xF0202125)).padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),

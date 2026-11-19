@@ -297,7 +297,8 @@ class IptvRepository(
         val ids = M3uParser.ids(channels)
         val base = index * 1_000_000
         val entities = channels.mapIndexed { i, c ->
-            ChannelEntity("${p.id}:${ids[i]}", p.id, true, base + i, TitleOptimizer.apply(c.name), c.logo, c.group, c.url, c.tvgId, c.tvgName, null, c.userAgent ?: ua, c.referrer, c.adult, rawName = c.name)
+            ChannelEntity("${p.id}:${ids[i]}", p.id, true, base + i, TitleOptimizer.apply(c.name), c.logo, c.group, c.url, c.tvgId, c.tvgName, null, c.userAgent ?: ua, c.referrer, c.adult, rawName = c.name,
+                catchupDays = c.catchupDays, catchup = c.catchup)
         }
         // Keep the guide links of channels that already had one, so Live TV keeps its guide while the new one loads.
         val oldKeys = db.channels().epgKeysOf(p.id).associate { it.id to it.epgKey }

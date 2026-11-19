@@ -14,6 +14,9 @@ data class ParsedChannel(
     val referrer: String?,
     /** Adult content: locked behind the parental PIN. */
     val adult: Boolean = false,
+    /** Catch-up days (0 = none) and how to build its links (see ChannelEntity.catchup). */
+    val catchupDays: Int = 0,
+    val catchup: String = "",
 )
 
 /** Recognises adult categories / channels by name. */
@@ -97,6 +100,13 @@ object M3uParser {
                         userAgent = lineUa ?: attrs["user-agent"],
                         referrer = lineRef,
                     ).let { it.copy(adult = Adult.isAdult(it.group) || (attrs["parent-code"] != null && Adult.isAdult(it.name))) }
+                        .let { pc ->
+                            // Catch-up: catchup="default|append|shift|flussonic|xc", catchup-days, catchup-source (also timeshift / tvg-rec).
+                            val mode = attrs["catchup"]?.trim()?.lowercase()?.takeIf { it.isNotEmpty() && it != "disabled" }
+                            val days = (attrs["catchup-days"] ?: attrs["timeshift"] ?: attrs["tvg-rec"])?.trim()?.toIntOrNull() ?: 0
+                            if (mode == null && days <= 0) pc
+                            else pc.copy(catchupDays = days.takeIf { it > 0 } ?: 1, catchup = "m3u|${mode ?: "shift"}|${attrs["catchup-source"].orEmpty()}")
+                        }
                     when {
                         isSeries || (isMovie && episodeRegex.containsMatchIn(parsed.name)) -> if (!liveOnly) episodes += parsed
                         isMovie -> if (!liveOnly) movies += parsed

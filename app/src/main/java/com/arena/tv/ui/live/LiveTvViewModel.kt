@@ -165,6 +165,9 @@ class LiveTvViewModel(private val c: AppContainer) : ViewModel() {
     // ---------------- Hold-OK menu: favorite / hide ----------------
     /** The channel whose menu is open. */
     val menuFor = MutableStateFlow<ChannelEntity?>(null)
+    /** The channel whose catch-up list is open. */
+    val catchupFor = MutableStateFlow<ChannelEntity?>(null)
+    val container get() = c
     /** Just hidden (for the "Undo" note). */
     val justHidden = MutableStateFlow<ChannelEntity?>(null)
     private var undoJob: kotlinx.coroutines.Job? = null

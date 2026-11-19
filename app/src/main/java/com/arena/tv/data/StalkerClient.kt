@@ -262,6 +262,10 @@ class StalkerClient(private val http: OkHttpClient) {
                 tvgId = c.o("xmltv_id").s(), tvgName = c.o("name").s(), userAgent = p.ua ?: session(p).box.ua, referrer = null,
                 // A single channel flagged by the portal only counts when its name looks adult too (e.g. "Love Nature" is flagged by some).
                 adult = c.o("tv_genre_id").s() in adultGenres || (c.o("censored").s() == "1" && Adult.isAdult(c.o("name").s())),
+                // tv_archive_duration is in hours on most portals (168 = 7 days); small values are days.
+                catchupDays = if (c.o("tv_archive").s() == "1" || c.o("enable_tv_archive").s() == "1")
+                    (c.o("tv_archive_duration").s()?.toIntOrNull()?.let { if (it > 14) (it + 23) / 24 else it }?.takeIf { it > 0 } ?: 1) else 0,
+                catchup = if (c.o("tv_archive").s() == "1" || c.o("enable_tv_archive").s() == "1") "stk" else "",
             )
         }
         val account = runCatching {
@@ -279,6 +283,34 @@ class StalkerClient(private val http: OkHttpClient) {
         return link.substringAfter(' ').trim().takeIf { it.startsWith("http") } ?: link.trim()
     }
 
+    /** Archived programmes of one channel on one day (yyyy-MM-dd): id, title, start, stop, description, archived. */
+    fun archiveDay(p: Playlist, chId: String, date: String): List<StalkerArchiveItem> {
+        val out = ArrayList<StalkerArchiveItem>()
+        var page = 1
+        while (page <= 20) {
+            val js = call(p, "type=epg&action=get_simple_data_table&ch_id=${chId.enc()}&date=${date.enc()}&p=$page").o("js")
+            val items = js.o("data").arr()
+            items.forEach { e ->
+                val start = e.o("start_timestamp").s()?.toLongOrNull()?.times(1000) ?: return@forEach
+                val stop = e.o("stop_timestamp").s()?.toLongOrNull()?.times(1000) ?: return@forEach
+                out += StalkerArchiveItem(e.o("id").s() ?: return@forEach, e.o("name").s() ?: "Programme", start, stop,
+                    e.o("descr").s()?.take(400), e.o("mark_archive").s() == "1")
+            }
+            val total = js.o("total_items").s()?.toIntOrNull() ?: 0
+            val per = js.o("max_page_items").s()?.toIntOrNull()?.takeIf { it > 0 } ?: 10
+            if (items.isEmpty() || page * per >= total) break
+            page++
+        }
+        return out
+    }
+
+    /** A playable link for an archived programme (its id from [archiveDay]). */
+    fun archiveLink(p: Playlist, programId: String): String {
+        val link = call(p, "type=tv_archive&action=create_link&cmd=${"auto /media/$programId.mpg".enc()}&series=&forced_storage=&disable_ad=0&download=0")
+            .o("js").o("cmd").s() ?: throw IOException("The portal didn't give a catch-up link")
+        return link.substringAfter(' ').trim().takeIf { it.startsWith("http") } ?: link.trim()
+    }
+
     /** Guide for the next day: channel id -> programmes (when the portal provides it). */
     fun epg(p: Playlist): Map<String, List<ProgramEntity>> {
         val data = call(p, "type=itv&action=get_epg_info&period=24").o("js").o("data") as? JsonObject ?: return emptyMap()
@@ -292,3 +324,5 @@ class StalkerClient(private val http: OkHttpClient) {
         }
     }
 }
+
+data class StalkerArchiveItem(val id: String, val title: String, val start: Long, val stop: Long, val description: String?, val archived: Boolean)

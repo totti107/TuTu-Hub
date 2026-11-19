@@ -49,6 +49,7 @@ class XtreamClient(private val http: OkHttpClient) {
         val login = get(api, ua) as? JsonObject ?: throw IOException("Unexpected login response")
         val info = login["user_info"] as? JsonObject
         if (info == null || info["auth"].s == "0") throw IOException("Login failed: wrong username or password")
+        val tz = (login["server_info"] as? JsonObject)?.get("timezone").s ?: "UTC"
         val status = info["status"].s ?: "?"
         val exp = info["exp_date"].s?.toLongOrNull()?.let { DateFormat.getDateInstance().format(Date(it * 1000)) }
         val account = buildString {
@@ -88,6 +89,8 @@ class XtreamClient(private val http: OkHttpClient) {
                 referrer = null,
                 // A single channel flagged by the provider only counts when its name looks adult too (e.g. "Love Nature" is flagged by some).
                 adult = o["category_id"].s in adultCats || (o["is_adult"].s == "1" && Adult.isAdult(o["name"].s)),
+                catchupDays = if (o["tv_archive"].s == "1") (o["tv_archive_duration"].s?.toIntOrNull()?.takeIf { it > 0 } ?: 1) else 0,
+                catchup = if (o["tv_archive"].s == "1") "xc|$tz" else "",
             )
         }
         return channels to account

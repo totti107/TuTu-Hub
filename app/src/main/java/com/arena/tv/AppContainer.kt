@@ -30,6 +30,7 @@ class AppContainer(context: Context) {
     val stalker = com.arena.tv.data.StalkerClient(http)
     val iptv = IptvRepository(http, db, settings, vod, stalker, context.cacheDir)
     val streams = com.arena.tv.data.StreamResolver(settings, stalker)
+    val catchup = com.arena.tv.data.Catchup(http, db, settings, stalker)
     val trakt = TraktRepository(http, db, settings)
     val sports = SportsRepository(SportsApi(http))
     val finder = ChannelFinder(db, iptv, settings)

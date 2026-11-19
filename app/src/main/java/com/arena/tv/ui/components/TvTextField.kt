@@ -19,10 +19,18 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import com.arena.tv.ui.theme.focusOutline
 
 /**
@@ -47,17 +55,40 @@ fun TvTextField(
     }
     var editing by remember { mutableStateOf(false) }
     val field = remember { FocusRequester() }
+    val cover = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(editing) { if (editing) { runCatching { field.requestFocus() }; keyboard?.show() } }
+    /** Done typing: hide the keyboard and let the remote move on (down to the results, by default). */
+    fun finish(dir: FocusDirection?) {
+        keyboard?.hide()
+        val moved = dir != null && focus.moveFocus(dir)
+        editing = false
+        if (!moved) scope.launch { kotlinx.coroutines.delay(50); runCatching { cover.requestFocus() } }
+    }
+    val actions = if (keyboardActions != KeyboardActions.Default) keyboardActions
+        else KeyboardActions(onDone = { finish(FocusDirection.Down) }, onSearch = { finish(FocusDirection.Down) }, onGo = { finish(FocusDirection.Down) })
     Box(modifier) {
         OutlinedTextField(value, onValueChange,
             Modifier.fillMaxWidth().focusRequester(field).focusProperties { canFocus = editing }
-                .onFocusChanged { if (!it.isFocused && editing) editing = false },
+                .onFocusChanged { if (!it.isFocused && editing) editing = false }
+                // Keyboard closed with Back but still in the box: the arrows leave it (they used to only move the cursor,
+                // so the results below couldn't be reached), and OK opens the keyboard again.
+                .onPreviewKeyEvent { e ->
+                    if (!editing || e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (e.key) {
+                        Key.DirectionDown -> { finish(FocusDirection.Down); true }
+                        Key.DirectionUp -> { finish(FocusDirection.Up); true }
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { keyboard?.show(); true }
+                        else -> false
+                    }
+                },
             label = label, placeholder = placeholder, leadingIcon = leadingIcon, trailingIcon = trailingIcon,
             singleLine = singleLine, maxLines = maxLines, shape = shape, visualTransformation = visualTransformation,
-            keyboardOptions = keyboardOptions, keyboardActions = keyboardActions)
+            keyboardOptions = keyboardOptions, keyboardActions = actions)
         // Until OK is pressed, the remote lands on this cover instead of the text box.
-        if (!editing) Box(Modifier.matchParentSize().focusOutline(if (shape is RoundedCornerShape) shape else RoundedCornerShape(12.dp))
+        if (!editing) Box(Modifier.matchParentSize().focusRequester(cover).focusOutline(if (shape is RoundedCornerShape) shape else RoundedCornerShape(12.dp))
             .clickable { editing = true })
     }
 }

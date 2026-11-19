@@ -35,6 +35,10 @@ data class ChannelEntity(
     @androidx.room.ColumnInfo(defaultValue = "0") val adult: Boolean = false,
     /** The name as the provider wrote it (name may be tidied by the Title Optimizer). */
     @androidx.room.ColumnInfo(defaultValue = "") val rawName: String = "",
+    /** Catch-up (TV archive): how many days back the provider keeps; 0 = none. */
+    @androidx.room.ColumnInfo(defaultValue = "0") val catchupDays: Int = 0,
+    /** How to build catch-up links: "xc|<server time zone>", "stk", or "m3u|<mode>|<source template>". */
+    @androidx.room.ColumnInfo(defaultValue = "") val catchup: String = "",
 )
 
 @Entity(tableName = "programs", indices = [Index(value = ["epgKey", "start"]), Index("stop")])
@@ -179,7 +183,7 @@ interface UserDao {
     entities = [ChannelEntity::class, ProgramEntity::class, FavoriteChannelEntity::class, FavoriteTeamEntity::class,
         RecentChannelEntity::class, FeedbackEntity::class, ProgramFts::class, VodEntity::class, VodCategoryEntity::class, EpisodeEntity::class,
         ProgressEntity::class, VodFavoriteEntity::class],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 abstract class ArenaDb : RoomDatabase() {
@@ -255,9 +259,16 @@ abstract class ArenaDb : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `channels` ADD COLUMN `catchupDays` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `channels` ADD COLUMN `catchup` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun create(context: Context): ArenaDb =
             Room.databaseBuilder(context, ArenaDb::class.java, "arena.db")
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .fallbackToDestructiveMigration()
                 .build()
     }
