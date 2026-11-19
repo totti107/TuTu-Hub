@@ -22,6 +22,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import com.arena.tv.ui.theme.focusOutline
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -55,7 +59,7 @@ private data class NewItem(val ep: NewEpisode, val channel: ChannelEntity?, val 
     val time: Long? get() = live?.program?.start ?: ep.airstamp
 }
 
-private data class NewToday(val yours: List<NewItem>, val library: List<NewItem>, val onChannels: List<NewItem>, val streaming: List<NewItem>, val other: List<NewItem>, val failed: Boolean)
+private data class NewToday(val mine: List<NewItem>, val yours: List<NewItem>, val library: List<NewItem>, val onChannels: List<NewItem>, val streaming: List<NewItem>, val other: List<NewItem>, val failed: Boolean)
 
 private fun words(s: String): List<String> = com.arena.tv.matching.ChannelNames.clean(s).split(' ').filter { it.isNotBlank() }
 
@@ -84,7 +88,15 @@ fun NewTodayScreen(onOpenVod: (String) -> Unit = {}) {
     val context = LocalContext.current
     val app = context.app
     var notice by remember { mutableStateOf<String?>(null) }
-    val data by produceState<NewToday?>(null) {
+    val prefs by app.prefs.collectAsState()
+    val mine = prefs.myShows
+    val scope = rememberCoroutineScope()
+    fun setMine(f: (List<String>) -> List<String>) = scope.launch { app.settings.updatePrefs { it.copy(myShows = f(it.myShows)) } }
+    fun follows(show: String) = mine.any { norm(it) == norm(show) }
+    var editShows by remember { mutableStateOf(false) }
+    if (editShows) MyShowsDialog("My shows", "New episodes of these shows are listed first, with the next air date even when it isn't today.",
+        mine, { n -> setMine { l -> if (l.any { norm(it) == norm(n) }) l else l + n } }, { n -> setMine { l -> l - n } }) { editShows = false }
+    val data by produceState<NewToday?>(null, mine) {
         val s = app.settings.current()
         val countries = s.regions.mapNotNull { when (it) { Region.US -> "US"; Region.UK -> "GB"; Region.CA -> "CA"; Region.AU -> "AU"; else -> null } }.ifEmpty { listOf("US") }
         val eps = runCatching { app.newEpisodes.today(countries) }.getOrDefault(emptyList())
@@ -119,14 +131,23 @@ fun NewTodayScreen(onOpenVod: (String) -> Unit = {}) {
             val i = items[k]
             if (i.ep.streaming == null && (i.series != null || i.channel != null || k < 120)) findLive(i)?.let { items[k] = i.copy(live = it, channel = it.channel) }
         }
+        // Shows you follow: today's episode if there is one, otherwise the next one announced.
+        val followed = mine.mapNotNull { name ->
+            items.firstOrNull { norm(it.ep.show) == norm(name) } ?: runCatching { app.newEpisodes.next(name) }.getOrNull()?.let { e ->
+                val series = library[norm(e.show)]?.firstOrNull()
+                val base = NewItem(e, e.network?.let { channelFor(it, channels, e.country) }, series, true)
+                findLive(base)?.let { base.copy(live = it, channel = it.channel) } ?: base
+            }
+        }.sortedBy { it.time?.takeIf { t -> it.ep.upcoming && t > now - 6 * 3600_000L } ?: Long.MAX_VALUE }
         val used = HashSet<Long>()
         fun List<NewItem>.claim() = filter { used.add(it.ep.showId) }
+        val mineItems = followed.claim()
         val yours = items.filter { it.yours }.claim()
         val inLibrary = items.filter { it.series != null }.claim()
         val onChannels = items.filter { it.channel != null }.sortedBy { it.time ?: Long.MAX_VALUE }.claim()
         val streaming = items.filter { it.ep.streaming != null }.claim().take(60)
         val other = items.claim().take(60)
-        value = NewToday(yours, inLibrary, onChannels, streaming, other, eps.isEmpty())
+        value = NewToday(mineItems, yours, inLibrary, onChannels, streaming, other, eps.isEmpty())
     }
     var sheet by remember { mutableStateOf<NewItem?>(null) }
     fun open(i: NewItem) { sheet = i }
@@ -136,10 +157,12 @@ fun NewTodayScreen(onOpenVod: (String) -> Unit = {}) {
             i.live?.let { addAll(liveActions(context, it) { msg -> notice = msg }) }
             if (i.live == null && i.channel != null) add(ShowAction("▶  Watch ${i.channel.name}") { PlayerActivity.start(context, i.channel.id, listOf(i.channel.id), null) })
             i.series?.let { v -> add(ShowAction("📚  Open in your Series library") { onOpenVod(v.key) }) }
+            if (follows(e.show)) add(ShowAction("✕  Stop following ${e.show}") { setMine { l -> l.filterNot { norm(it) == norm(e.show) } }; notice = "Stopped following ${e.show}" })
+            else add(ShowAction("★  Follow ${e.show}") { setMine { it + e.show }; notice = "★ Following ${e.show}: its new episodes will show first" })
         }
         val note = when {
-            actions.isEmpty() && e.streaming != null -> "This one is on ${e.streaming}. It isn't in your playlist yet — providers usually add new episodes to Series within a day or two."
-            actions.isEmpty() -> "Not on your channels or in your library yet. Providers usually add new episodes to Series within a day or two."
+            actions.size <= 1 && e.streaming != null -> "This one is on ${e.streaming}. It isn't in your playlist yet — providers usually add new episodes to Series within a day or two."
+            actions.size <= 1 -> "Not on your channels or in your library yet. Providers usually add new episodes to Series within a day or two."
             i.series != null && i.live == null -> "The newest episode can take a day or two to appear in your library."
             else -> null
         }
@@ -151,12 +174,23 @@ fun NewTodayScreen(onOpenVod: (String) -> Unit = {}) {
         item {
             Column(Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp)) {
                 Text("New today 🆕", fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                Text("New episodes airing or released today, and where to watch them", color = ArenaColors.Muted, fontSize = 14.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("New episodes airing or released today, and where to watch them", color = ArenaColors.Muted, fontSize = 14.sp, modifier = Modifier.weight(1f, false))
+                    Spacer(Modifier.width(12.dp))
+                    androidx.compose.material3.OutlinedButton(onClick = { editShows = true }, modifier = Modifier.focusOutline()) {
+                        Text("★ My shows" + if (mine.isNotEmpty()) " (${mine.size})" else "")
+                    }
+                }
                 notice?.let { Text(it, color = ArenaColors.Gold, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
             }
         }
         if (d == null) { item { CircularProgressIndicator(Modifier.padding(40.dp)) }; return@LazyColumn }
         if (d.failed) item { Text("Couldn't load today's schedule. Check the internet connection and open this again.", color = ArenaColors.Muted, modifier = Modifier.padding(24.dp)) }
+        item { NewRail("★ My shows", "next episodes", d.mine, ::open) }
+        if (mine.isEmpty()) item {
+            Text("Tip: press OK on any show and choose ★ Follow, or use ★ My shows, to always see its next episode here.",
+                color = ArenaColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(start = 24.dp, top = 12.dp))
+        }
         item { NewRail("From shows you watch", null, d.yours, ::open) }
         item { NewRail("In your Series library", "may take a day to appear", d.library, ::open) }
         item { NewRail("On your channels", "airing today", d.onChannels, ::open) }
@@ -202,7 +236,10 @@ private fun NewCard(i: NewItem, onClick: () -> Unit) {
             Spacer(Modifier.weight(1f))
             val now = System.currentTimeMillis()
             val liveNow = i.live?.let { it.program.start <= now && it.program.stop > now } == true
+            val future = e.airstamp != null && e.airstamp > now + 24 * 3600_000L
             val where = when {
+                !e.upcoming -> "No new episode announced yet"
+                future -> "Next: ${dayTime(e.airstamp!!)}" + (e.network ?: e.streaming)?.let { " · $it" }.orEmpty()
                 i.live != null -> (if (liveNow) "● LIVE now · " else "📺 ${dayTime(i.live.program.start)} · ") + i.live.channel.name
                 i.channel != null -> "📺 ${i.channel.name}" + (e.airstamp?.let { " · ${dayTime(it)}" } ?: "")
                 e.streaming != null -> "▶ ${e.streaming}" + (e.airstamp?.let { " · out ${dayTime(it)}" } ?: "")
@@ -220,5 +257,6 @@ private fun NewCard(i: NewItem, onClick: () -> Unit) {
 private fun dayTime(t: Long): String {
     val c = java.util.Calendar.getInstance(); val today = c.get(java.util.Calendar.DAY_OF_YEAR)
     c.timeInMillis = t
-    return when (c.get(java.util.Calendar.DAY_OF_YEAR) - today) { 0 -> Time.clock(t); 1 -> "Tomorrow ${Time.clock(t)}"; -1 -> "Yesterday ${Time.clock(t)}"; else -> Time.clock(t) }
+    return when (c.get(java.util.Calendar.DAY_OF_YEAR) - today) { 0 -> Time.clock(t); 1 -> "Tomorrow ${Time.clock(t)}"; -1 -> "Yesterday ${Time.clock(t)}"
+        else -> java.text.SimpleDateFormat("EEE d MMM", java.util.Locale.getDefault()).format(java.util.Date(t)) + " " + Time.clock(t) }
 }

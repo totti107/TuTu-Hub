@@ -151,3 +151,35 @@ fun liveActions(context: android.content.Context, s: ShowOnChannel, done: (Strin
         })
     }
 }
+
+/** Add / remove the shows a section watches for ("South Park", "Love Island USA"…). */
+@Composable
+fun MyShowsDialog(title: String, hint: String, shows: List<String>, onAdd: (String) -> Unit, onRemove: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    fun add() { text.trim().takeIf { it.length >= 2 }?.let(onAdd); text = "" }
+    androidx.compose.material3.AlertDialog(onDismissRequest = onDismiss, containerColor = ArenaColors.Surface,
+        title = { Text(title, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(hint, color = ArenaColors.Muted, fontSize = 13.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    com.arena.tv.ui.components.TvTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text("Show name, e.g. South Park") },
+                        singleLine = true, shape = RoundedCornerShape(14.dp),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { add() }))
+                    Spacer(Modifier.width(8.dp))
+                    androidx.compose.material3.Button(onClick = ::add, modifier = Modifier.focusOutline()) { Text("Add") }
+                }
+                if (shows.isEmpty()) Text("No shows added yet.", color = ArenaColors.Muted, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.height(260.dp)) {
+                    items(shows, key = { it }) { s ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("★  $s", modifier = Modifier.weight(1f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            androidx.compose.material3.TextButton(onClick = { onRemove(s) }, modifier = Modifier.focusOutline()) { Text("Remove", color = ArenaColors.Live) }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.focusOutline()) { Text("Done") } })
+}

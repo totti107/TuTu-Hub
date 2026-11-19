@@ -140,6 +140,11 @@ data class Prefs(
     val planLate: Int = 0,
     /** Reminders go off this many minutes before a show starts. */
     val planRemind: Int = 5,
+    // ---- Reality TV / New today ----
+    /** Extra shows the Reality TV section looks for (added by you). */
+    val realityShows: List<String> = emptyList(),
+    /** Shows you follow in New today (their new episodes are listed first, with the next air date). */
+    val myShows: List<String> = emptyList(),
 )
 
 data class TraktAuth(

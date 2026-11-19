@@ -76,3 +76,4 @@ If sound gets worse (e.g. soundbar Dolby), revert the extension mode / dependenc
 - 3.23.0 = build 1037 (drag / hold-to-scrub seek bar; hold OK on remote opens channel menu incl. guide; catch-up note in menu).
 - 3.24.0 = build 1038 (Reality: 24/7 row; Home: Reality big tile, TV Guide/Catch-up/New today small, Recordings tile moved to Settings; New today screen via TVmaze).
 - 3.25.0 = build 1039 (New today: guide times + watch/remind sheet; Reality: search + remind; on-screen reminder popup).
+- 3.26.0 = build 1040 (My shows: Reality TV extra shows + New today followed shows with next air date).

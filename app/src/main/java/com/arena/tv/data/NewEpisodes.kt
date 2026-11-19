@@ -19,6 +19,8 @@ data class NewEpisode(
     val showId: Long, val show: String, val title: String?, val season: Int?, val number: Int?, val airstamp: Long?,
     val network: String?, val streaming: String?, val country: String?, val image: String?, val type: String?, val genres: List<String>,
     val popularity: Int,
+    /** For a followed show: true when [airstamp] is its next (announced) episode, false when it's the last one. */
+    val upcoming: Boolean = true,
 ) {
     val code: String get() = listOfNotNull(season?.let { "S$it" }, number?.let { "E$it" }).joinToString(" ")
     val premiere: Boolean get() = number == 1
@@ -48,6 +50,23 @@ class NewEpisodes(private val http: OkHttpClient) {
                 if (eps.size > 1) first.copy(title = "${eps.size} new episodes") else first } }
             .sortedByDescending { it.popularity }
         if (result.isNotEmpty()) cache = key to result
+        result
+    }
+
+    private val nextCache = HashMap<String, Pair<Long, NewEpisode?>>()
+
+    /** A show you follow: its next episode (or, if none is announced, the last one), looked up by name. */
+    suspend fun next(name: String): NewEpisode? = withContext(Dispatchers.IO) {
+        val key = name.trim().lowercase()
+        nextCache[key]?.takeIf { System.currentTimeMillis() - it.first < 3 * 3600_000L }?.let { return@withContext it.second }
+        val q = java.net.URLEncoder.encode(name.trim(), "UTF-8")
+        val show = runCatching { get("https://api.tvmaze.com/singlesearch/shows?q=$q&embed[]=nextepisode&embed[]=previousepisode") as? JsonObject }.getOrNull()
+        val emb = show?.get("_embedded") as? JsonObject
+        val ep = (emb?.get("nextepisode") ?: emb?.get("previousepisode")) as? JsonObject
+        val result = if (show == null) null else parse(JsonArray(listOf(JsonObject((ep ?: JsonObject(emptyMap())) + ("show" to show)))), embedded = false)
+            .firstOrNull()?.let { if (ep == null) it.copy(title = null, season = null, number = null, airstamp = null) else it }
+            ?.copy(upcoming = emb?.get("nextepisode") is JsonObject)
+        nextCache[key] = System.currentTimeMillis() to result
         result
     }
 

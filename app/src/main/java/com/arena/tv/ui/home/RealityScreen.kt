@@ -20,6 +20,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
@@ -54,6 +56,13 @@ object Reality {
     )
     val match: String = shows.joinToString(" OR ")
 
+    /** A show name as a full-text phrase ("Love Island USA" → "love island usa"). */
+    fun phrase(name: String): String? = name.lowercase().replace(Regex("""[^a-z0-9 ]+"""), " ").trim().replace(Regex("""\s+"""), " ")
+        .takeIf { it.isNotEmpty() }?.let { "\"$it\"" }
+
+    /** The built-in shows plus the ones you added. */
+    fun match(extra: List<String>): String = (shows + extra.mapNotNull(::phrase)).joinToString(" OR ")
+
     /** Plain words for finding these shows in the Movies / Series library by name. */
     val titles = listOf(
         "love island", "kardashian", "housewives", "bachelor", "below deck", "vanderpump", "selling sunset", "selling the oc", "90 day",
@@ -66,9 +75,9 @@ object Reality {
     )
 
     /** Reality shows in the library: matching names, plus whole categories the provider calls "Reality". */
-    suspend fun library(app: com.arena.tv.AppContainer, kind: Int): List<com.arena.tv.data.VodEntity> {
+    suspend fun library(app: com.arena.tv.AppContainer, kind: Int, extra: List<String> = app.prefs.value.realityShows): List<com.arena.tv.data.VodEntity> {
         val vod = app.db.vod()
-        val byName = titles.flatMap { vod.search(kind, it) }
+        val byName = (extra.map { it.trim() }.filter { it.length >= 2 } + titles).flatMap { vod.search(kind, it) }
         val cats = vod.categoriesOnce(kind).filter { !it.adult && Regex("""(?i)reality|real ?tv|lifestyle|dating""").containsMatchIn(it.name) }.map { it.id }
         val byCat = if (cats.isEmpty()) emptyList() else vod.inCategories(kind, cats)
         return (byName + byCat).distinctBy { it.key }.distinctBy { it.name.lowercase().replace(Regex("""\W+"""), "") }
@@ -87,9 +96,16 @@ private data class RealityData(val nonstop: List<ShowOnChannel>, val now: List<S
 fun RealityScreen(onOpenVod: (String) -> Unit = {}) {
     val context = LocalContext.current
     val app = context.app
-    val data by produceState<RealityData?>(null) {
+    val prefs by app.prefs.collectAsState()
+    val mine = prefs.realityShows
+    var editShows by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun setMine(f: (List<String>) -> List<String>) = scope.launch { app.settings.updatePrefs { it.copy(realityShows = f(it.realityShows)) } }
+    if (editShows) MyShowsDialog("My Reality shows", "Shows you add here are looked for in your TV guide and Series library, next to the built-in ones.",
+        mine, { n -> setMine { l -> if (l.any { it.equals(n, true) }) l else l + n } }, { n -> setMine { l -> l - n } }) { editShows = false }
+    val data by produceState<RealityData?>(null, mine) {
         val now = System.currentTimeMillis()
-        val progs = runCatching { app.db.programs().search(Reality.match, now - 24 * 3600_000L, now + 24 * 3600_000L, 3000) }.getOrDefault(emptyList())
+        val progs = runCatching { app.db.programs().search(Reality.match(mine), now - 24 * 3600_000L, now + 24 * 3600_000L, 3000) }.getOrDefault(emptyList())
         val chans = progs.map { it.epgKey }.distinct().chunked(500).flatMap { app.db.channels().safeByEpgKeys(it) }.groupBy { it.epgKey }
         // One card per showing: the same episode on "Bravo", "Bravo HD" and "Bravo East" shows once (prefer a catch-up channel).
         val shows = progs.mapNotNull { p -> chans[p.epgKey]?.let { list -> ShowOnChannel(p, list.firstOrNull { it.catchupDays > 0 } ?: list.first()) } }
@@ -105,7 +121,7 @@ fun RealityScreen(onOpenVod: (String) -> Unit = {}) {
             later = regular.filter { it.program.start > now }.sortedBy { it.program.start }.take(60),
             earlier = regular.filter { it.program.stop <= now && it.channel.catchupDays > 0 }.sortedByDescending { it.program.start }.take(60),
             channels = channels,
-            series = runCatching { Reality.library(app, com.arena.tv.data.VodKind.SERIES) }.getOrDefault(emptyList()),
+            series = runCatching { Reality.library(app, com.arena.tv.data.VodKind.SERIES, mine) }.getOrDefault(emptyList()),
         )
     }
     fun watchLive(ch: ChannelEntity) = PlayerActivity.start(context, ch.id, listOf(ch.id), null)
@@ -136,13 +152,24 @@ fun RealityScreen(onOpenVod: (String) -> Unit = {}) {
             Column(Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp)) {
                 Text("Reality TV 💅", fontSize = 30.sp, fontWeight = FontWeight.Bold)
                 Text("Love Island, the Kardashians, Real Housewives, Below Deck and more — from your TV guide", color = ArenaColors.Muted, fontSize = 14.sp)
-                com.arena.tv.ui.components.TvTextField(query, { query = it }, Modifier.padding(top = 12.dp).widthIn(max = 560.dp).fillMaxWidth(),
-                    placeholder = { Text("Search a show — guide and Series library") }, singleLine = true, shape = RoundedCornerShape(16.dp))
+                Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    com.arena.tv.ui.components.TvTextField(query, { query = it }, Modifier.widthIn(max = 560.dp).weight(1f, false).fillMaxWidth(),
+                        placeholder = { Text("Search a show — guide and Series library") }, singleLine = true, shape = RoundedCornerShape(16.dp))
+                    Spacer(Modifier.width(10.dp))
+                    androidx.compose.material3.OutlinedButton(onClick = { editShows = true }, modifier = Modifier.focusOutline()) {
+                        Text("★ My shows" + if (mine.isNotEmpty()) " (${mine.size})" else "")
+                    }
+                }
                 notice?.let { Text(it, color = ArenaColors.Gold, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
             }
         }
         results?.let { (guide, series) ->
             val now = System.currentTimeMillis()
+            val q = query.trim()
+            if (Reality.phrase(q) != null && mine.none { it.equals(q, true) }) item {
+                androidx.compose.material3.Button(onClick = { setMine { it + q }; notice = "★ \"$q\" added to your Reality shows" },
+                    modifier = Modifier.padding(start = 24.dp, top = 12.dp).focusOutline()) { Text("★ Add \"$q\" to Reality TV") }
+            }
             if (guide.isEmpty() && series.isEmpty()) item { Text("Nothing found for \"${query.trim()}\".", color = ArenaColors.Muted, modifier = Modifier.padding(24.dp)) }
             item { ShowRail("In the TV guide", "${guide.size}", guide, { s ->
                 when { s.program.start <= now && s.program.stop > now -> "● LIVE · until ${Time.clock(s.program.stop)}"
