@@ -7,6 +7,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import com.arena.tv.ui.components.holdOk
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
@@ -309,6 +310,7 @@ internal fun ChannelCard(number: Int, ch: ChannelEntity, nn: NowNext?, selected:
             .then(if (selected) Modifier.border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(16.dp)) else Modifier)
             // Hold OK (or the remote's Menu key) for Favorite / Hide.
             .onKeyEvent { e -> if (onMenu != null && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.Menu) { onMenu(); true } else false }
+            .holdOk(onClick, onMenu) // remote: hold OK for the menu
             .combinedClickable(onClick = onClick, onLongClick = onMenu).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -457,12 +459,12 @@ private fun EpgGrid(vm: LiveTvViewModel, modifier: Modifier) {
     val archive = rows.any { it.catchupDays > 0 }
     val from = remember(archive) { now - (now % 1_800_000) - (if (archive) 24 else 1) * 3_600_000L }
     val programs by remember(rows.map { it.id }, from) { vm.gridPrograms(rows, from, now + 8 * 3600_000L) }.collectAsState(initial = emptyMap())
-    EpgGridContent(rows, programs, selected, now, from, vm::select, modifier)
+    EpgGridContent(rows, programs, selected, now, from, vm::select, modifier) { vm.menuFor.value = it }
 }
 
 @Composable
 internal fun EpgGridContent(rows: List<ChannelEntity>, programs: Map<String, List<ProgramEntity>>, selected: ChannelEntity?, now: Long, from: Long,
-                            select: (ChannelEntity) -> Unit, modifier: Modifier) {
+                            select: (ChannelEntity) -> Unit, modifier: Modifier, onMenu: ((ChannelEntity) -> Unit)? = null) {
     val vm = object { fun select(ch: ChannelEntity) = select(ch) }
     val wide = LocalWide.current
     val c = com.arena.tv.ui.components.LocalCompactChrome.current
@@ -501,6 +503,7 @@ internal fun EpgGridContent(rows: List<ChannelEntity>, programs: Map<String, Lis
                     Row(
                         Modifier.width(nameW).fillMaxHeight().clip(RoundedCornerShape(12.dp))
                             .background(if (isSel) ArenaColors.SurfaceHi else ArenaColors.Surface)
+                            .holdOk({ if (isSel) play(ch) else vm.select(ch) }, onMenu?.let { m -> { m(ch) } })
                             .clickable { if (isSel) play(ch) else vm.select(ch) }.padding(horizontal = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -618,7 +621,8 @@ internal fun ChannelMenus(vm: LiveTvViewModel) {
                     MenuRow(if (fav) "★  Remove from favorites" else "☆  Add to favorites") { vm.toggleFavorite(ch.id); vm.menuFor.value = null }
                     if (ch.catchupDays > 0) MenuRow("⏪  Catch-up · watch what aired (${ch.catchupDays} day${if (ch.catchupDays == 1) "" else "s"})") {
                         vm.menuFor.value = null; vm.catchupFor.value = ch
-                    }
+                    } else Text("⏪  No catch-up on this channel (your provider doesn't record it)", color = ArenaColors.Muted, fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
                     MenuRow("🚫  Hide this channel") { vm.hideChannel(ch) }
                     MenuRow("🗂  Hide category \"${ch.groupTitle}\"") { vm.hideCategory(ch) }
                     Text("Hidden things come back in Settings → Playlists (Hidden channels · Choose categories).",

@@ -68,6 +68,11 @@ import androidx.media3.common.Player
 import com.arena.tv.ui.components.Time
 import com.arena.tv.ui.theme.ArenaColors
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 
 /** What the movie player overlay shows. */
 data class VodUi(val controls: Boolean = true, val panel: String? = null, val resize: Int = 0, val playing: Boolean = true, val notice: String? = null)
@@ -109,25 +114,59 @@ fun VodControls(
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000), Color(0xF2000000))))
             .padding(start = 32.dp, end = 32.dp, top = 48.dp, bottom = 20.dp)) {
-            // Seek bar: select it and use left / right to jump 10 seconds.
+            // Seek bar. Phone: drag (or tap) anywhere on it. Remote: select it, hold ◀ / ▶ to scrub (it speeds up), OK or a pause jumps there.
             var barFocused by remember { mutableStateOf(false) }
+            var scrub by remember { mutableStateOf<Long?>(null) }
+            var barW by remember { mutableIntStateOf(1) }
+            var dragging by remember { mutableStateOf(false) }
+            fun commit() { scrub?.let { onSeek(it - player.currentPosition) }; scrub = null }
+            // Remote: jump once the arrows have been left alone for a moment.
+            LaunchedEffect(scrub, dragging) { if (scrub != null && !dragging) { delay(900); commit() } }
+            fun at(x: Float): Long = if (dur > 0) ((x / barW).coerceIn(0f, 1f) * dur).toLong() else 0L
+            val shown = scrub ?: pos
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(clock(pos), color = Color.White, fontSize = 14.sp)
-                Box(Modifier.weight(1f).padding(horizontal = 14.dp).height(24.dp)
-                    .onFocusChanged { barFocused = it.isFocused; if (it.isFocused) { label = "Use ◀ ▶ to jump 10 seconds"; touched() } }
+                Text(clock(shown), color = if (scrub != null) ArenaColors.Accent else Color.White, fontSize = 14.sp, fontWeight = if (scrub != null) FontWeight.Bold else FontWeight.Normal)
+                Box(Modifier.weight(1f).padding(horizontal = 14.dp).height(36.dp)
+                    .onSizeChanged { barW = it.width.coerceAtLeast(1) }
+                    .onFocusChanged { barFocused = it.isFocused; if (it.isFocused) { label = "Hold ◀ ▶ to move · OK to jump there"; touched() } else if (scrub != null) commit() }
                     .onKeyEvent { e ->
-                        if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
-                        when (e.key) { Key.DirectionLeft -> { onSeek(-10_000); touched(); true }; Key.DirectionRight -> { onSeek(10_000); touched(); true }; else -> false }
-                    }.focusable(), contentAlignment = Alignment.CenterStart) {
-                    val frac = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f
-                    Box(Modifier.fillMaxWidth().height(if (barFocused) 6.dp else 4.dp).clip(CircleShape).background(Color(0x33FFFFFF))) {
-                        Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(if (barFocused) ArenaColors.Accent else Color.White))
+                        val left = e.key == Key.DirectionLeft; val right = e.key == Key.DirectionRight
+                        val ok = e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter
+                        when {
+                            e.type == KeyEventType.KeyDown && (left || right) && dur > 0 -> {
+                                // Longer holds move faster: 10 s, then 30 s, then 1 min, then 2% of the title per step.
+                                val r = e.nativeKeyEvent.repeatCount
+                                val step = when { r < 3 -> 10_000L; r < 10 -> 30_000L; r < 20 -> 60_000L; else -> maxOf(60_000L, dur / 50) }
+                                scrub = ((scrub ?: player.currentPosition) + if (right) step else -step).coerceIn(0, dur)
+                                touched(); true
+                            }
+                            ok && scrub != null -> { if (e.type == KeyEventType.KeyUp) commit(); touched(); true }
+                            else -> false
+                        }
                     }
-                    if (barFocused) Box(Modifier.fillMaxWidth(frac).padding(start = 0.dp), contentAlignment = Alignment.CenterEnd) {
-                        Box(Modifier.size(16.dp).clip(CircleShape).background(Color.White))
+                    .pointerInput(dur) {
+                        detectTapGestures { o -> if (dur > 0) { onSeek(at(o.x) - player.currentPosition); touched() } }
+                    }
+                    .pointerInput(dur) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { o -> dragging = true; scrub = at(o.x); touched() },
+                            onDragEnd = { dragging = false; commit(); touched() },
+                            onDragCancel = { dragging = false; scrub = null },
+                        ) { change, _ -> scrub = at(change.position.x); touched() }
+                    }
+                    .focusable(), contentAlignment = Alignment.CenterStart) {
+                    val frac = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f
+                    val target = if (dur > 0) (shown.toFloat() / dur).coerceIn(0f, 1f) else 0f
+                    val active = barFocused || scrub != null
+                    Box(Modifier.fillMaxWidth().height(if (active) 6.dp else 4.dp).clip(CircleShape).background(Color(0x33FFFFFF))) {
+                        Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(if (active) Color(0x99FFFFFF) else Color.White))
+                        if (scrub != null) Box(Modifier.fillMaxHeight().fillMaxWidth(target).background(ArenaColors.Accent))
+                    }
+                    if (active) Box(Modifier.fillMaxWidth(target), contentAlignment = Alignment.CenterEnd) {
+                        Box(Modifier.size(if (scrub != null) 20.dp else 16.dp).clip(CircleShape).background(Color.White))
                     }
                 }
-                Text(if (dur > 0) "-" + clock(dur - pos) else "--:--", color = Color.White, fontSize = 14.sp)
+                Text(if (dur > 0) "-" + clock(dur - shown) else "--:--", color = Color.White, fontSize = 14.sp)
             }
             Spacer(Modifier.height(10.dp))
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {

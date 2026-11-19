@@ -73,3 +73,4 @@ If sound gets worse (e.g. soundbar Dolby), revert the extension mode / dependenc
 - 3.20.0 = build 1034 (catch-up: badge, list, playback; search box: arrows leave it after typing). DB version 9.
 - 3.21.0 = build 1035 (guide keeps a day of past for catch-up channels; catch-up from TV guide and schedule; Home Catch-up + Reality TV screens; Reload tile removed from TV Home).
 - 3.22.0 = build 1036 (Reality TV collection in Series; Series to binge row on Reality screen).
+- 3.23.0 = build 1037 (drag / hold-to-scrub seek bar; hold OK on remote opens channel menu incl. guide; catch-up note in menu).
