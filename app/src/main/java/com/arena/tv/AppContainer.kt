@@ -48,6 +48,8 @@ class AppContainer(context: Context) {
     val prefs = kotlinx.coroutines.flow.MutableStateFlow(com.arena.tv.data.Prefs())
     /** The channel in the mini player (bottom corner while browsing), if any. */
     val miniPlayer = kotlinx.coroutines.flow.MutableStateFlow<com.arena.tv.MiniPlayback?>(null)
+    /** A planner reminder that just went off, shown on screen by whichever screen is open. */
+    val dueReminder = kotlinx.coroutines.flow.MutableStateFlow<com.arena.tv.ui.components.DueReminder?>(null)
     /** Home screen shortcuts into Live TV: "favorites" or "guide". */
     val liveRequest = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 

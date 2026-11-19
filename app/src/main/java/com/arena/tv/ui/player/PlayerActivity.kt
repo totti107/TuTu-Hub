@@ -161,6 +161,7 @@ class PlayerActivity : ComponentActivity() {
         setContent {
             ArenaTheme {
                 playerRef.value?.let { PlayerScreen(activity = this, player = it, state = ui.value, zapIds = ids) }
+                com.arena.tv.ui.components.ReminderPopup()
             }
         }
         // Red record button while this channel is being recorded.

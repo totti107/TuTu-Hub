@@ -341,6 +341,9 @@ class RecordingReceiver : BroadcastReceiver() {
             .setContentTitle(if (mins > 0) "Starting in $mins min: ${r.title}" else "Starting now: ${r.title}")
             .setContentText("On ${r.channelName} · tap to watch").setContentIntent(pi).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
         runCatching { nm.notify(id.hashCode(), n) }
+        // TVs rarely show notifications over the app: also show it on screen if TuTu is open.
+        context.app.dueReminder.value = com.arena.tv.ui.components.DueReminder(r.channelId,
+            if (mins > 0) "Starting in $mins min" else "Starting now", "${r.title} · ${r.channelName}")
         val scope = CoroutineScope(Dispatchers.IO)
         val done = goAsync()
         scope.launch { try { context.app.recordings.update { l -> l.filter { it.id != id } } } finally { done.finish() } }

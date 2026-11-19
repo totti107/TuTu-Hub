@@ -162,6 +162,7 @@ private fun ArenaRoot() {
                 },
             ) { pad -> Box(Modifier.padding(pad)) { Graph(nav) { go(Section.SETTINGS) } } }
         }
+        com.arena.tv.ui.components.ReminderPopup()
         mini?.let { m ->
             Box(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp), contentAlignment = Alignment.BottomEnd) {
                 com.arena.tv.ui.components.MiniPlayer(m, miniFocus)

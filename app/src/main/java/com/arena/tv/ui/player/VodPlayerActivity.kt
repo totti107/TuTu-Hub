@@ -255,6 +255,7 @@ class VodPlayerActivity : ComponentActivity() {
                         }
                     }
                 }
+                com.arena.tv.ui.components.ReminderPopup()
             }
         }
     }

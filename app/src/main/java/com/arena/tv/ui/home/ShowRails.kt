@@ -38,6 +38,10 @@ import com.arena.tv.data.ProgramEntity
 import com.arena.tv.ui.components.Logo
 import com.arena.tv.ui.components.Time
 import com.arena.tv.ui.theme.ArenaColors
+import com.arena.tv.ui.theme.focusOutline
+import com.arena.tv.app
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.launch
 
 /** A programme on a channel, as shown on the Catch-up and Reality TV screens. */
 data class ShowOnChannel(val program: ProgramEntity, val channel: ChannelEntity)
@@ -92,5 +96,58 @@ private fun ShowCard(s: ShowOnChannel, badge: String, onClick: () -> Unit) {
         Text(s.program.title, color = fg, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 19.sp)
         Spacer(Modifier.weight(1f))
         Text(badge, color = if (focused) Color.Black else if (live) ArenaColors.Live else ArenaColors.Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+/** One choice in a [ShowActions] sheet. */
+data class ShowAction(val label: String, val onClick: () -> Unit)
+
+/** What to do with a show: watch now, remind me, open in the library… (remote and touch friendly). */
+@Composable
+fun ShowActions(title: String, subtitle: String?, note: String?, actions: List<ShowAction>, onDismiss: () -> Unit) {
+    val first = remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    androidx.compose.material3.AlertDialog(onDismissRequest = onDismiss, containerColor = ArenaColors.Surface,
+        title = {
+            Column {
+                Text(title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                subtitle?.let { Text(it, color = ArenaColors.Muted, fontSize = 14.sp) }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                actions.forEachIndexed { i, a ->
+                    var focused by remember { mutableStateOf(false) }
+                    Text(a.label, color = if (focused) Color.Black else ArenaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(first) else Modifier)
+                            .onFocusChanged { focused = it.isFocused }.clip(RoundedCornerShape(12.dp))
+                            .background(if (focused) Color.White else ArenaColors.SurfaceHi).clickable { onDismiss(); a.onClick() }
+                            .padding(horizontal = 16.dp, vertical = 14.dp))
+                }
+                note?.let { Text(it, color = ArenaColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.focusOutline()) { Text("Close") } })
+}
+
+/** Watch / remind choices for a show on one of your channels. */
+fun liveActions(context: android.content.Context, s: ShowOnChannel, done: (String) -> Unit): List<ShowAction> {
+    val now = System.currentTimeMillis()
+    val p = s.program
+    val app = context.app
+    return buildList {
+        add(ShowAction(if (p.start <= now) "▶  Watch now on ${s.channel.name}" else "▶  Watch ${s.channel.name} now (airs ${Time.clock(p.start)})") {
+            com.arena.tv.ui.player.PlayerActivity.start(context, s.channel.id, listOf(s.channel.id), null)
+        })
+        if (p.start > now + 60_000) add(ShowAction("🔔  Remind me at ${Time.clock(p.start)}") {
+            kotlinx.coroutines.MainScope().launch {
+                runCatching { app.recordings.plan(s.channel, p.title, p.start, p.stop, "remind") }
+                    .onSuccess { done("🔔 Reminder set: ${p.title} at ${Time.clock(p.start)} on ${s.channel.name}") }
+                    .onFailure { done("Couldn't set the reminder") }
+            }
+        })
+        if (p.stop <= now && s.channel.catchupDays > 0) add(ShowAction("⏪  Watch from the start (catch-up)") {
+            com.arena.tv.ui.player.VodPlayerActivity.startCatchup(context, s.channel.id, com.arena.tv.data.CatchupItem(p.title, p.start, p.stop, p.description))
+        })
     }
 }

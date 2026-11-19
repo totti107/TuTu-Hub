@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -18,6 +20,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -106,6 +109,26 @@ fun RealityScreen(onOpenVod: (String) -> Unit = {}) {
         )
     }
     fun watchLive(ch: ChannelEntity) = PlayerActivity.start(context, ch.id, listOf(ch.id), null)
+    var notice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var sheet by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<ShowOnChannel?>(null) }
+    sheet?.let { s -> ShowActions(s.program.title, "${s.channel.name} · ${airedOrLater(s.program.start)}", null, liveActions(context, s) { notice = it }) { sheet = null } }
+    // Search: the TV guide (last day → next two days) and the Series library.
+    var query by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    val results by produceState<Pair<List<ShowOnChannel>, List<com.arena.tv.data.VodEntity>>?>(null, query) {
+        val q = query.trim()
+        if (q.length < 2) { value = null; return@produceState }
+        kotlinx.coroutines.delay(400)
+        val now = System.currentTimeMillis()
+        val words = q.lowercase().replace(Regex("""[^a-z0-9 ]+"""), " ").split(' ').filter { it.isNotBlank() }
+        val match = words.joinToString(" ") { "$it*" }
+        val progs = if (words.isEmpty()) emptyList() else runCatching { app.db.programs().search(match, now - 24 * 3600_000L, now + 48 * 3600_000L, 300) }.getOrDefault(emptyList())
+        val chans = progs.map { it.epgKey }.distinct().chunked(500).flatMap { app.db.channels().safeByEpgKeys(it) }.groupBy { it.epgKey }
+        val guide = progs.mapNotNull { p -> chans[p.epgKey]?.let { l -> ShowOnChannel(p, l.firstOrNull { it.catchupDays > 0 } ?: l.first()) } }
+            .filter { it.program.stop > now || it.channel.catchupDays > 0 }
+            .groupBy { it.program.title.lowercase() + "|" + it.program.start }.values.map { it.first() }
+            .sortedWith(compareBy({ if (it.program.stop <= now) 1 else 0 }, { it.program.start }))
+        value = guide to runCatching { app.db.vod().search(com.arena.tv.data.VodKind.SERIES, q) }.getOrDefault(emptyList())
+    }
 
     val d = data
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
@@ -113,7 +136,22 @@ fun RealityScreen(onOpenVod: (String) -> Unit = {}) {
             Column(Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp)) {
                 Text("Reality TV 💅", fontSize = 30.sp, fontWeight = FontWeight.Bold)
                 Text("Love Island, the Kardashians, Real Housewives, Below Deck and more — from your TV guide", color = ArenaColors.Muted, fontSize = 14.sp)
+                com.arena.tv.ui.components.TvTextField(query, { query = it }, Modifier.padding(top = 12.dp).widthIn(max = 560.dp).fillMaxWidth(),
+                    placeholder = { Text("Search a show — guide and Series library") }, singleLine = true, shape = RoundedCornerShape(16.dp))
+                notice?.let { Text(it, color = ArenaColors.Gold, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
             }
+        }
+        results?.let { (guide, series) ->
+            val now = System.currentTimeMillis()
+            if (guide.isEmpty() && series.isEmpty()) item { Text("Nothing found for \"${query.trim()}\".", color = ArenaColors.Muted, modifier = Modifier.padding(24.dp)) }
+            item { ShowRail("In the TV guide", "${guide.size}", guide, { s ->
+                when { s.program.start <= now && s.program.stop > now -> "● LIVE · until ${Time.clock(s.program.stop)}"
+                    s.program.stop <= now -> "⏪ " + airedLabel(s.program.start); else -> airedOrLater(s.program.start) } }) { s ->
+                if (s.program.stop <= now) VodPlayerActivity.startCatchup(context, s.channel.id, CatchupItem(s.program.title, s.program.start, s.program.stop, s.program.description))
+                else sheet = s
+            } }
+            item { PosterRail("In your Series library", "${series.size}", series, onOpenVod) }
+            return@LazyColumn
         }
         if (d == null) { item { CircularProgressIndicator(Modifier.padding(40.dp)) }; return@LazyColumn }
         if (d.nonstop.isEmpty() && d.now.isEmpty() && d.later.isEmpty() && d.earlier.isEmpty() && d.series.isEmpty()) item {
@@ -125,7 +163,7 @@ fun RealityScreen(onOpenVod: (String) -> Unit = {}) {
             VodPlayerActivity.startCatchup(context, s.channel.id, CatchupItem(s.program.title, s.program.start, s.program.stop, s.program.description))
         } }
         item { ShowRail("24/7 channels", "the same show, all day", d.nonstop, { "● Non-stop" }) { watchLive(it.channel) } }
-        item { ShowRail("Coming up", "today and tomorrow", d.later, { airedOrLater(it.program.start) }) { watchLive(it.channel) } }
+        item { ShowRail("Coming up", "today and tomorrow · OK to watch or set a reminder", d.later, { airedOrLater(it.program.start) }) { sheet = it } }
         item { PosterRail("Series to binge", "${d.series.size} in your library", d.series, onOpenVod) }
         if (d.channels.isNotEmpty()) item {
             Column(Modifier.padding(top = 18.dp)) {
